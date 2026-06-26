@@ -181,6 +181,7 @@
 
   .metarline{padding:9px 13px;border-top:1px solid var(--line-soft);font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);letter-spacing:.02em;line-height:1.5;word-break:break-word;display:flex;gap:8px;align-items:baseline}
   .metarline .fr{flex:0 0 auto;font-weight:700;padding:1px 6px;font-size:9px;letter-spacing:.08em}
+  .metarline .mage{margin-left:auto;flex:0 0 auto;color:var(--ink-faint);font-size:9px;letter-spacing:.06em;white-space:nowrap}
   .fr.VFR{color:var(--phos);border:1px solid var(--phos)}
   .fr.MVFR{color:var(--sky);border:1px solid var(--sky)}
   .fr.IFR{color:var(--amber);border:1px solid var(--amber)}
@@ -403,15 +404,10 @@ const AIRPORTS = [
    rwy:'07', star:'MAGAL1A', app:'ILS 07'},
 ];
 
-/* synthetic METARs (would be a live AWC/DMC feed in production) */
-const METARS = {
-  SCEL:{raw:'SCEL 232300Z 21012KT 9999 FEW035 SCT080 14/06 Q1018 NOSIG', cat:'VFR'},
-  SCDA:{raw:'SCDA 232300Z 19008KT CAVOK 19/13 Q1013 NOSIG', cat:'VFR'},
-  SCFA:{raw:'SCFA 232300Z 22014KT 9999 SCT020 17/11 Q1014', cat:'VFR'},
-  SCIE:{raw:'SCIE 232300Z 27018KT 8000 -RA BKN012 OVC030 11/09 Q1006', cat:'MVFR'},
-  SCTE:{raw:'SCTE 232300Z 29022G34KT 4000 RA BKN006 OVC015 09/08 Q0998', cat:'IFR'},
-  SCCI:{raw:'SCCI 232300Z 30028G45KT 2500 +RADZ OVC004 06/05 Q0991', cat:'LIFR'},
-};
+/* METAR en vivo: ya NO se usan datos sintéticos. El job de GitHub Actions
+   (.github/workflows/metar.yml) baja los METAR de NOAA AWC cada 10 min y los
+   escribe en Firebase RTDB bajo /runcast/metars. La app los lee en tiempo real
+   (ver subscribeMetars). Sin datos reales, no se muestra METAR (nunca se inventa). */
 
 /* ============================================================
    ICONS
@@ -497,6 +493,21 @@ async function publishState(s){
   await saveLocal(s);
 }
 
+/* Suscribe a los METAR en vivo (los escribe el job de GitHub Actions en /runcast/metars).
+   onMetars({SCEL:{raw,cat,obsTime}, ...}). Devuelve función de limpieza. */
+function subscribeMetars(onMetars){
+  if(firebaseConfigured()){
+    try{
+      if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      const ref=firebase.database().ref('runcast/metars');
+      const cb=snap=>onMetars(snap.val()||{});
+      ref.on('value', cb);
+      return ()=>{ try{ ref.off('value',cb); }catch(e){} };
+    }catch(e){ console.warn('[RUNCAST] METAR no disponible:', e); }
+  }
+  return ()=>{};
+}
+
 async function loadLocal(){
   try{ const r=await window.storage.get(SKEY,true); return r&&r.value?JSON.parse(r.value):null;}catch(e){return null;}
 }
@@ -524,6 +535,7 @@ function App(){
   const [unread,setUnread]=useState(0);
   const [alerts,setAlerts]=useState([]);   // cambios de otras unidades sin acuse
   const [syncMode,setSyncMode]=useState('local');
+  const [metars,setMetars]=useState({});   // METAR en vivo desde /runcast/metars
   const lastVer=useRef(0);
   const userRef=useRef(null); userRef.current=user;
   const seenLogs=useRef(new Set());          // ids de eventos ya procesados
@@ -541,6 +553,9 @@ function App(){
     setSyncMode(sub.mode);
     return sub.stop;
   },[]);
+
+  // suscripción en tiempo real a los METAR (alimentados por GitHub Actions)
+  useEffect(()=>subscribeMetars(setMetars),[]);
 
   function applyRemote(s, signal){
     lastVer.current=s._ver||0;
@@ -647,9 +662,9 @@ function App(){
       h('div',{className:'content'},
         alerts.length>0 && h(AlertBanner,{alerts,onAck:ackAlert,onAckAll:ackAll}),
         view==='viewer' && h(Viewer,{airports:visible,allCount:airports.length,mine:mine.length,changedNow,
-          query,setQuery,filter,setFilter,user,onEdit:setEditing}),
+          query,setQuery,filter,setFilter,user,onEdit:setEditing,metars}),
         view==='log' && h(LogView,{logs,user}),
-        view==='brief' && h(Briefing,{airports,logs,user}),
+        view==='brief' && h(Briefing,{airports,logs,user,metars}),
       )
     ),
     h(Footer,{user,clock,changedNow,syncMode}),
@@ -740,8 +755,8 @@ function Rail({user,view,setView,mine,changedNow}){
 }
 
 /* ---------------- Viewer ---------------- */
-function Viewer({airports,allCount,mine,changedNow,query,setQuery,filter,setFilter,user,onEdit}){
-  const ifrCount=airports.filter(a=>{const m=METARS[a.icao];return m&&(m.cat==='IFR'||m.cat==='LIFR');}).length;
+function Viewer({airports,allCount,mine,changedNow,query,setQuery,filter,setFilter,user,onEdit,metars}){
+  const ifrCount=airports.filter(a=>{const m=metars[a.icao];return m&&(m.cat==='IFR'||m.cat==='LIFR');}).length;
   return h('div',null,
     h('div',{className:'strip'},
       h('div',{className:'cell'}, h('div',{className:'k'},'Aeródromos en red'), h('div',{className:'v g'},allCount)),
@@ -759,14 +774,14 @@ function Viewer({airports,allCount,mine,changedNow,query,setQuery,filter,setFilt
       airports.length===0
         ? h('div',{className:'empty'},'Sin aeródromos que coincidan con el filtro.')
         : h('div',{className:'apgrid'},
-            airports.map(a=>h(AirportCard,{key:a.icao,a,user,onEdit})))
+            airports.map(a=>h(AirportCard,{key:a.icao,a,user,onEdit,metars})))
     )
   );
 }
 
-function AirportCard({a,user,onEdit}){
+function AirportCard({a,user,onEdit,metars}){
   const owns=a.owner===user.unit;
-  const m=METARS[a.icao];
+  const m=metars[a.icao];
   const chg=a.changed||[];
   const fld=(key,label,val)=>h('div',{className:'opf'+(chg.includes(key)?' changed':'')},
     h('div',{className:'k'},label),
@@ -785,8 +800,9 @@ function AirportCard({a,user,onEdit}){
       fld('star','STAR asignada', a.star),
       fld('app','Aproximación', a.app)),
     m && h('div',{className:'metarline'},
-      h('span',{className:'fr '+m.cat},m.cat),
-      h('span',null,m.raw)),
+      m.cat && h('span',{className:'fr '+m.cat},m.cat),
+      h('span',null,m.raw),
+      m.obsTime && h('span',{className:'mage',title:'Antigüedad de la observación'}, ageMin(m.obsTime*1000))),
     h('div',{className:'apfoot'},
       h('span',{className:'age'},'Actualizado '+ageMin(a.updatedAt)),
       h('span',{className:'by'},'· '+(a.updatedBy||'—')),
@@ -864,10 +880,10 @@ function LogView({logs,user}){
 }
 
 /* ---------------- Briefing ---------------- */
-function Briefing({airports,logs,user}){
+function Briefing({airports,logs,user,metars}){
   const [signed,setSigned]=useState({out:false,in:false});
   const mine=airports.filter(a=>a.owner===user.unit);
-  const ifr=airports.filter(a=>{const m=METARS[a.icao];return m&&(m.cat==='IFR'||m.cat==='LIFR');});
+  const ifr=airports.filter(a=>{const m=metars[a.icao];return m&&(m.cat==='IFR'||m.cat==='LIFR');});
   const recent=logs.slice(0,6);
   return h('div',{className:'brief'},
     h('div',{className:'panel',style:{padding:'16px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}},
@@ -892,8 +908,8 @@ function Briefing({airports,logs,user}){
           ? h('div',{className:'brrow'},h('span',{className:'tx'},'Sin aeródromos en condición IFR/LIFR en la red. Operación visual generalizada.'))
           : ifr.map(a=>h('div',{className:'brrow',key:a.icao},
               h('span',{className:'ic'},a.icao),
-              h('span',{className:'tx',style:{fontSize:11}}, METARS[a.icao].raw),
-              h('span',{className:'tg'},METARS[a.icao].cat))))),
+              h('span',{className:'tx',style:{fontSize:11}}, metars[a.icao].raw),
+              h('span',{className:'tg'},metars[a.icao].cat))))),
 
     h('div',{className:'brsec'},
       h('div',{className:'bh'}, h('span',{className:'n'},'3'), h('h4',null,'Cambios del turno')),

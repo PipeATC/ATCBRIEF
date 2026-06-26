@@ -1,0 +1,64 @@
+name: METAR refresh
+
+# Baja los METAR de NOAA AWC (datos oficiales chilenos de la DGAC, redistribuidos)
+# cada 10 minutos y los publica en Firebase RTDB (/runcast/metars). La app RUNCAST
+# los lee en tiempo real. Se ejecuta del lado servidor para evitar el bloqueo CORS
+# que sufre el sitio estático en el navegador.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 minutos (hora UTC)
+  workflow_dispatch:          # permite ejecutarlo a mano desde la pestaña Actions
+  push:
+    paths:
+      - '.github/workflows/metar.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metar-refresh
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar METAR y publicar en Firebase RTDB
+        env:
+          RTDB_URL: https://atcbrief-default-rtdb.firebaseio.com
+          STATIONS: SCEL,SCDA,SCFA,SCIE,SCTE,SCCI
+        run: |
+          set -euo pipefail
+
+          echo "Solicitando METAR para: $STATIONS"
+          raw=$(curl -sS --fail --retry 3 --retry-delay 5 --max-time 60 \
+            "https://aviationweather.gov/api/data/metar?ids=${STATIONS}&format=json")
+
+          # Transforma el arreglo de AWC a un objeto { ICAO: {raw,cat,obsTime,updatedAt} }
+          payload=$(echo "$raw" | jq '
+            map(select(.icaoId != null and .rawOb != null) | {
+              key: .icaoId,
+              value: {
+                raw: .rawOb,
+                cat: (.fltCat // ""),
+                obsTime: .obsTime,
+                updatedAt: (now | floor)
+              }
+            }) | from_entries
+          ')
+
+          count=$(echo "$payload" | jq 'length')
+          echo "Estaciones recibidas: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "Sin datos METAR válidos; se omite la escritura para no borrar los anteriores."
+            exit 1
+          fi
+
+          # PUT reemplaza por completo /runcast/metars con el lote más reciente.
+          curl -sS --fail -X PUT \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "${RTDB_URL}/runcast/metars.json" > /dev/null
+
+          echo "Publicado en ${RTDB_URL}/runcast/metars"
