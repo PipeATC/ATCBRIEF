@@ -1,13 +1,15 @@
 name: METAR refresh
 
-# Baja los METAR de NOAA AWC (datos oficiales chilenos de la DGAC, redistribuidos)
-# cada 10 minutos y los publica en Firebase RTDB (/runcast/metars). La app RUNCAST
-# los lee en tiempo real. Se ejecuta del lado servidor para evitar el bloqueo CORS
-# que sufre el sitio estático en el navegador.
+# Baja los METAR/SPECI de NOAA AWC (datos oficiales chilenos de la DGAC, redistribuidos)
+# y los publica en Firebase RTDB (/runcast/metars). La app RWYCAST los lee en tiempo
+# real. Se ejecuta del lado servidor para evitar el bloqueo CORS del sitio estático.
+# NOTA: solución provisional. GitHub Actions tiene un mínimo real de ~5 min entre
+# ejecuciones programadas y a veces las retrasa. Más adelante se migrará a otro método
+# (p. ej. Cloudflare Worker con Cron Trigger) para refresco al minuto.
 
 on:
   schedule:
-    - cron: '*/10 * * * *'   # cada 10 minutos (hora UTC)
+    - cron: '*/5 * * * *'     # cada 5 minutos (hora UTC); GitHub puede retrasarlo
   workflow_dispatch:          # permite ejecutarlo a mano desde la pestaña Actions
   push:
     paths:
