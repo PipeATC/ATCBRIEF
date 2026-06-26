@@ -294,6 +294,31 @@
   .toast.warn{border-color:var(--amber);color:var(--amber)}
   .toast b{color:var(--phos)}
 
+  /* ---------- alert banner (cambios sin acuse) ---------- */
+  .alertbar{position:sticky;top:0;z-index:50;
+    background:linear-gradient(180deg,#2a1c06,#190f02);
+    border-bottom:1px solid var(--amber);box-shadow:0 8px 22px rgba(0,0,0,.45)}
+  .alertbar .ah{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--amber-deep)}
+  .alertbar .ah .ttl{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--amber);font-weight:700;display:flex;align-items:center;gap:9px}
+  .alertbar .ah .ttl .ico{width:9px;height:9px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 10px var(--amber);animation:pulse 1.05s infinite;flex:0 0 auto}
+  .alertbar .ah .ackall{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;font-weight:700;padding:7px 13px;border:1px solid var(--amber);
+    background:var(--amber);color:#190f02;cursor:pointer}
+  .alertbar .ah .ackall:hover{box-shadow:0 0 10px rgba(255,180,84,.5)}
+  .alertlist{max-height:34vh;overflow-y:auto}
+  .alertrow{display:flex;align-items:center;gap:13px;padding:9px 16px;border-bottom:1px solid var(--line-soft)}
+  .alertrow:last-child{border-bottom:none}
+  .alertrow .ai{font-family:var(--mono);font-weight:800;color:var(--amber);font-size:15px;
+    min-width:52px;text-shadow:0 0 10px rgba(255,180,84,.35)}
+  .alertrow .ax{flex:1;font-family:var(--mono);font-size:11.5px;color:var(--ink);line-height:1.5}
+  .alertrow .ax .au{display:block;font-size:9.5px;color:var(--ink-faint);margin-top:2px;letter-spacing:.05em}
+  .alertrow .ack{flex:0 0 auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;
+    text-transform:uppercase;font-weight:700;padding:6px 12px;border:1px solid var(--amber);
+    background:none;color:var(--amber);cursor:pointer}
+  .alertrow .ack:hover{background:rgba(255,180,84,.12)}
+
   /* ---------- status footer ---------- */
   .footer{flex:0 0 auto;height:34px;border-top:1px solid var(--line);background:var(--panel-2);display:flex;align-items:center;gap:0;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-faint)}
   .footer .fi{padding:0 15px;border-right:1px solid var(--line-soft);height:100%;display:flex;align-items:center;gap:8px}
@@ -335,6 +360,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<!-- Firebase (sincronización en tiempo real entre operadores) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
@@ -411,13 +439,66 @@ const GLYPH = h('svg',{className:'glyph',viewBox:'0 0 48 48',fill:'none'},
   h('circle',{cx:24,cy:24,r:2.5,fill:'var(--phos)'}));
 
 /* ============================================================
-   STORAGE LAYER (persistent, shared across "units"/sessions)
+   SYNC LAYER — Firebase Realtime Database (entre operadores)
+   Fallback: window.storage con polling (solo entornos sandbox).
    ============================================================ */
-const SKEY='runcast:state:v1';
-async function loadState(){
+
+/* 👉 CONFIGURA AQUÍ tu proyecto Firebase:
+   Firebase Console → ⚙ Configuración del proyecto → "Tus apps" (Web) → copia firebaseConfig,
+   y crea una "Realtime Database" para obtener el databaseURL.
+   Mientras databaseURL contenga "TODO", la app funciona en modo LOCAL y NO sincroniza
+   entre operadores (los cambios se quedan en cada navegador). */
+const FIREBASE_CONFIG = {
+  apiKey:      "TODO_API_KEY",
+  authDomain:  "TODO_PROJECT.firebaseapp.com",
+  databaseURL: "https://TODO_PROJECT-default-rtdb.firebaseio.com",
+  projectId:   "TODO_PROJECT",
+  appId:       "TODO_APP_ID",
+};
+
+const SKEY='runcast:state:v1';            // clave en modo local (window.storage)
+const DBPATH='runcast/state/v1';          // ruta del estado compartido en Firebase
+let _dbRef=null;                          // ref a Firebase si está configurado
+
+function firebaseConfigured(){
+  return !!(window.firebase && FIREBASE_CONFIG.databaseURL
+            && FIREBASE_CONFIG.databaseURL.indexOf('TODO')===-1);
+}
+
+/* Suscribe a cambios remotos. onState(state, isInitial) se llama en cada actualización.
+   Devuelve {mode:'firebase'|'local', stop:fn}. */
+function subscribeState(onState){
+  if(firebaseConfigured()){
+    try{
+      if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      _dbRef=firebase.database().ref(DBPATH);
+      let first=true;
+      const cb=snap=>{ const v=snap.val(); if(!v) return; onState(v, first); first=false; };
+      _dbRef.on('value', cb);
+      return {mode:'firebase', stop:()=>{ try{_dbRef.off('value',cb);}catch(e){} }};
+    }catch(e){ console.warn('[RUNCAST] Firebase no disponible, modo local:', e); _dbRef=null; }
+  }
+  // Fallback local (sandbox). NO sincroniza entre dispositivos en GitHub Pages.
+  let lastVer=0, alive=true;
+  (async()=>{ const s=await loadLocal(); if(s&&alive) onState(s, true); })();
+  const poll=setInterval(async()=>{
+    if(!alive) return;
+    const s=await loadLocal();
+    if(s && (s._ver||0)>lastVer){ lastVer=s._ver||0; onState(s, false); }
+  },2500);
+  return {mode:'local', stop:()=>{ alive=false; clearInterval(poll); }};
+}
+
+/* Publica el estado completo a todas las unidades. */
+async function publishState(s){
+  if(_dbRef){ try{ await _dbRef.set(s); return; }catch(e){ console.warn('[RUNCAST] publish falló:', e); } }
+  await saveLocal(s);
+}
+
+async function loadLocal(){
   try{ const r=await window.storage.get(SKEY,true); return r&&r.value?JSON.parse(r.value):null;}catch(e){return null;}
 }
-async function saveState(s){
+async function saveLocal(s){
   try{ await window.storage.set(SKEY, JSON.stringify(s), true);}catch(e){}
 }
 
@@ -439,53 +520,80 @@ function App(){
   const [toasts,setToasts]=useState([]);
   const [clock,setClock]=useState(clockZ());
   const [unread,setUnread]=useState(0);
+  const [alerts,setAlerts]=useState([]);   // cambios de otras unidades sin acuse
+  const [syncMode,setSyncMode]=useState('local');
   const lastVer=useRef(0);
+  const userRef=useRef(null); userRef.current=user;
+  const seenLogs=useRef(new Set());          // ids de eventos ya procesados
 
   // clock
   useEffect(()=>{const t=setInterval(()=>setClock(clockZ()),1000);return ()=>clearInterval(t);},[]);
 
-  // initial load + poll for changes from other "units"
+  // suscripción en tiempo real a los cambios de cualquier unidad
   useEffect(()=>{
-    let live=true;
-    (async()=>{
-      const s=await loadState();
-      if(s&&live){ applyRemote(s,false); }
-    })();
-    const poll=setInterval(async()=>{
-      const s=await loadState();
-      if(s&&s._ver>lastVer.current){ applyRemote(s,true); }
-    },2500);
-    return ()=>{live=false;clearInterval(poll);};
+    const sub=subscribeState((s,isInitial)=>{
+      // ignora el "eco" de nuestra propia publicación (mismo _ver ya aplicado)
+      if(!isInitial && (s._ver||0)<=lastVer.current) return;
+      applyRemote(s, !isInitial);
+    });
+    setSyncMode(sub.mode);
+    return sub.stop;
   },[]);
 
   function applyRemote(s, signal){
     lastVer.current=s._ver||0;
+    const me=userRef.current;
     if(s.airports){
       setAirports(prev=>{
         return s.airports.map(na=>{
           const old=prev.find(p=>p.icao===na.icao);
-          // detect external change for blink
+          // detecta cambio externo para el parpadeo
           const changed=[];
-          if(old){
+          if(old && signal){
             ['rwy','star','app'].forEach(f=>{ if(old[f]!==na[f]) changed.push(f); });
           }
-          return {...na, changed: (signal&&changed.length)?changed: (na._self?[]:(old?old.changed:[])) };
+          // el parpadeo persiste hasta que se acuse (no se auto-borra)
+          return {...na, changed: signal ? (changed.length?changed:(old?old.changed:[])) : [] };
         });
       });
     }
     if(s.logs) setLogs(s.logs);
-    if(signal){
-      // someone else changed something
-      const evt=(s.logs||[])[0];
-      if(evt && (!user || evt.unit!==user.unit)){
-        pushToast('warn', 'ACTUALIZACIÓN '+(evt.icao||''), evt.summary||'Cambio operacional recibido');
-        setUnread(u=>u+1);
-        // auto-clear blink after 9s
-        setTimeout(()=>{
-          setAirports(prev=>prev.map(a=>a.icao===evt.icao?{...a,changed:[]}:a));
-        },9000);
-      }
+
+    const logs=s.logs||[];
+    // carga inicial: marca todo el historial como visto, sin alertar
+    if(!signal){ logs.forEach(l=>seenLogs.current.add(l.id)); return; }
+
+    // eventos nuevos de OTRAS unidades → alerta persistente + toast
+    const fresh=logs.filter(l=> !seenLogs.current.has(l.id) && (!me || l.unit!==me.unit));
+    logs.forEach(l=>seenLogs.current.add(l.id)); // incluye los propios para no auto-alertar
+    if(fresh.length){
+      setAlerts(prev=>{
+        const have=new Set(prev.map(a=>a.id));
+        const add=fresh.filter(l=>!have.has(l.id)).map(l=>(
+          {id:l.id, icao:l.icao, unit:l.unit, user:l.user, summary:l.summary, zulu:l.zulu}));
+        return [...add, ...prev];
+      });
+      setUnread(u=>u+fresh.length);
+      fresh.slice(0,3).forEach(l=>
+        pushToast('warn','ACTUALIZACIÓN '+(l.icao||''), l.summary||'Cambio operacional recibido'));
     }
+  }
+
+  // acusar recibo: quita la alerta y, si no quedan más para ese aeropuerto, detiene el parpadeo
+  function ackAlert(id){
+    setAlerts(prev=>{
+      const a=prev.find(x=>x.id===id);
+      const rest=prev.filter(x=>x.id!==id);
+      if(a && !rest.some(x=>x.icao===a.icao)){
+        setAirports(ap=>ap.map(x=>x.icao===a.icao?{...x,changed:[]}:x));
+      }
+      return rest;
+    });
+    setUnread(u=>Math.max(0,u-1));
+  }
+  function ackAll(){
+    setAirports(ap=>ap.map(x=>({...x,changed:[]})));
+    setAlerts([]); setUnread(0);
   }
 
   function pushToast(kind,title,msg){
@@ -494,24 +602,23 @@ function App(){
     setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),4500);
   }
 
-  // commit a change (local) and broadcast
+  // publica un cambio y lo difunde a todas las unidades
   async function commitChange(icao, next, diff){
     const ts=Date.now();
     const newAirports=airports.map(a=>a.icao===icao
-      ? {...a,...next,updatedAt:ts,updatedBy:user.name+' · '+user.unit,changed:diff.map(d=>d.field),_self:true}
-      : {...a,_self:false});
+      ? {...a,...next,updatedAt:ts,updatedBy:user.name+' · '+user.unit,changed:[]}
+      : a);
     const summary=diff.map(d=>fieldLabel(d.field)+': '+d.to).join(' · ');
     const logEntry={id:ts,type:'upd',icao,unit:user.unit,user:user.name,ts,diff,summary,zulu:nowZ()};
     const newLogs=[logEntry,...logs].slice(0,200);
+    seenLogs.current.add(ts);          // nuestro propio cambio no debe auto-alertarnos
     setAirports(newAirports);
     setLogs(newLogs);
     setEditing(null);
-    pushToast('ok','PUBLICADO '+icao, summary+' — visible para todas las unidades');
+    pushToast('ok','PUBLICADO '+icao, summary+' — enviado a todas las unidades');
     const ver=Date.now();
     lastVer.current=ver;
-    await saveState({_ver:ver, airports:newAirports.map(a=>({...a,changed:[]})), logs:newLogs});
-    // clear our own blink after a bit
-    setTimeout(()=>setAirports(prev=>prev.map(a=>a.icao===icao?{...a,changed:[]}:a)),9000);
+    await publishState({_ver:ver, airports:newAirports, logs:newLogs});
   }
 
   function login(unit,name){
@@ -536,13 +643,14 @@ function App(){
     h('div',{className:'stage'},
       h(Rail,{user,view,setView,mine,changedNow}),
       h('div',{className:'content'},
+        alerts.length>0 && h(AlertBanner,{alerts,onAck:ackAlert,onAckAll:ackAll}),
         view==='viewer' && h(Viewer,{airports:visible,allCount:airports.length,mine:mine.length,changedNow,
           query,setQuery,filter,setFilter,user,onEdit:setEditing}),
         view==='log' && h(LogView,{logs,user}),
         view==='brief' && h(Briefing,{airports,logs,user}),
       )
     ),
-    h(Footer,{user,clock,changedNow}),
+    h(Footer,{user,clock,changedNow,syncMode}),
     h(MobileTabs,{view,setView,changedNow}),
     editing && h(Editor,{ap:editing,user,onClose:()=>setEditing(null),onSave:commitChange}),
     h('div',{className:'toasts'}, toasts.map(t=>
@@ -812,10 +920,31 @@ function Briefing({airports,logs,user}){
   );
 }
 
+/* ---------------- Alert Banner (cambios sin acuse) ---------------- */
+function AlertBanner({alerts,onAck,onAckAll}){
+  const n=alerts.length;
+  return h('div',{className:'alertbar'},
+    h('div',{className:'ah'},
+      h('div',{className:'ttl'}, h('span',{className:'ico'}),
+        n+' cambio'+(n>1?'s':'')+' sin acuse · otras unidades'),
+      h('button',{className:'ackall',onClick:onAckAll},'Enterado de todo')),
+    h('div',{className:'alertlist'},
+      alerts.map(a=>h('div',{className:'alertrow',key:a.id},
+        h('span',{className:'ai'},a.icao),
+        h('span',{className:'ax'},
+          a.summary||'Cambio operacional',
+          h('span',{className:'au'}, a.user+' · '+a.unit+' · '+a.zulu)),
+        h('button',{className:'ack',onClick:()=>onAck(a.id)},'Enterado')))));
+}
+
 /* ---------------- Footer ---------------- */
-function Footer({user,clock,changedNow}){
+function Footer({user,clock,changedNow,syncMode}){
+  const synced=syncMode==='firebase';
   return h('div',{className:'footer'},
-    h('div',{className:'fi'}, h('span',{className:'live'}), h('b',null,'RED OPERACIONAL'),' · sincronizada'),
+    h('div',{className:'fi'},
+      h('span',{className:'live',style:synced?null:{background:'var(--amber)',boxShadow:'0 0 8px var(--amber)'}}),
+      h('b',{style:synced?null:{color:'var(--amber)'}},'RED OPERACIONAL'),
+      synced?' · sincronizada':' · modo local (sin sync)'),
     h('div',{className:'fi'},'UNIDAD: ',h('b',null,'\u00A0'+user.unit)),
     h('div',{className:'fi'}, changedNow>0?h('span',{style:{color:'var(--amber)'}},'⚠ '+changedNow+' cambio(s) activo(s)'):'Sin alertas activas'),
     h('div',{className:'right'},
