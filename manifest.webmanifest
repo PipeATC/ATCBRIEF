@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "RWYCAST · ATC Chile",
+  "short_name": "RWYCAST",
+  "description": "Sistema operacional ATC Chile — pistas en uso, STAR, aproximaciones y METAR en tiempo real.",
+  "lang": "es-CL",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070b0e",
+  "theme_color": "#070b0e",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

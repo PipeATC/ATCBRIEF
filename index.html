@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>RWYCAST · Sistema Operacional ATC Chile</title>
+
+<!-- ===== PWA (instalable en Android e iOS) ===== -->
+<meta name="description" content="Sistema operacional ATC Chile — pistas en uso, STAR, aproximaciones y METAR en tiempo real.">
+<meta name="theme-color" content="#070b0e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<!-- iOS / Safari: "Agregar a pantalla de inicio" -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RWYCAST">
+<link rel="apple-touch-icon" href="icon-512.png">
 <style>
   :root{
     /* Phosphor control-room palette, grounded in radar/ATIS displays */
@@ -1063,6 +1075,16 @@ function MobileTabs({view,setView,changedNow}){
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+
+<!-- Registro del service worker (habilita instalación PWA y shell offline) -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .catch(err => console.warn('[RWYCAST] Service worker no registrado:', err));
+    });
+  }
 </script>
 </body>
 </html>
