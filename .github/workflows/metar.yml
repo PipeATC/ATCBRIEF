@@ -29,9 +29,29 @@ jobs:
       - name: Descargar METAR y publicar en Firebase RTDB
         env:
           RTDB_URL: https://atcbrief-default-rtdb.firebaseio.com
-          STATIONS: SCEL,SCDA,SCFA,SCIE,SCTE,SCCI
+          # Semilla base por si el estado aún no existe en RTDB.
+          DEFAULTS: SCEL,SCDA,SCFA,SCIE,SCTE,SCCI
         run: |
           set -euo pipefail
+
+          # Lee los aeródromos dados de alta en la app (estado compartido en RTDB).
+          # Cualquier unidad agregada desde el módulo Catálogo aparece aquí, así su
+          # METAR se descarga automáticamente sin tener que editar este workflow.
+          echo "Leyendo aeródromos desde RTDB…"
+          state=$(curl -sS --retry 3 --retry-delay 5 --max-time 30 \
+            "${RTDB_URL}/runcast/state/v1/airports.json" || echo 'null')
+
+          dynamic=$(echo "$state" | jq -r '
+            (if type=="array" then map(.icao)
+             elif type=="object" then [.[].icao]
+             else [] end)
+            | map(select(. != null and . != "")) | join(",")
+          ')
+
+          # Une la lista dinámica con la semilla, normaliza y deduplica.
+          STATIONS=$(printf '%s,%s' "$DEFAULTS" "$dynamic" \
+            | tr ',' '\n' | sed 's/[^A-Za-z0-9]//g' | awk 'NF' \
+            | tr '[:lower:]' '[:upper:]' | sort -u | paste -sd, -)
 
           echo "Solicitando METAR para: $STATIONS"
           raw=$(curl -sS --fail --retry 3 --retry-delay 5 --max-time 60 \
