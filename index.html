@@ -165,11 +165,21 @@
   .apcard .owntag b{color:var(--sky);display:block}
 
   .opfields{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line-soft)}
+  .opfields.two{grid-template-columns:1fr 1fr}
   .opf{padding:12px 13px;border-right:1px solid var(--line-soft);position:relative}
   .opf:last-child{border-right:none}
   .opf .k{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-faint);text-transform:uppercase}
   .opf .val{font-family:var(--mono);font-size:19px;font-weight:800;color:var(--ink);margin-top:7px;line-height:1;letter-spacing:.02em}
   .opf .val.empty{color:var(--ink-faint);font-weight:500;font-size:14px}
+  /* puntos de entrada con su STAR (apilados hacia abajo) */
+  .eplist{border-top:1px solid var(--line-soft)}
+  .eprow{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line-soft)}
+  .eprow:first-child{border-top:none}
+  .epf{padding:10px 13px;border-right:1px solid var(--line-soft)}
+  .epf:last-child{border-right:none}
+  .epf .k{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-faint);text-transform:uppercase}
+  .epf .val{font-family:var(--mono);font-size:15px;font-weight:800;color:var(--ink);margin-top:5px;line-height:1;letter-spacing:.02em}
+  .epf .val.empty{color:var(--ink-faint);font-weight:500;font-size:13px}
 
   /* blink signalling */
   @keyframes flashfield{
@@ -257,6 +267,12 @@
   .seg button{flex:0 0 auto;font-family:var(--mono);font-size:13px;font-weight:700;padding:9px 13px;border:1px solid var(--line);background:var(--void);color:var(--ink-dim);cursor:pointer;transition:.13s}
   .seg button:hover{color:var(--ink);border-color:var(--ink-faint)}
   .seg button.on{color:var(--void);background:var(--phos);border-color:var(--phos)}
+  .epref{border:1px solid var(--line);background:var(--void)}
+  .eprefrow{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--line-soft);font-family:var(--mono);font-size:13px}
+  .eprefrow:last-child{border-bottom:none}
+  .eprefrow b{color:var(--phos);min-width:64px}
+  .eprefrow span{color:var(--ink-faint)}
+  .eprefrow .s{color:var(--ink);font-weight:700}
   .dfoot{padding:16px 20px;border-top:1px solid var(--line);display:flex;gap:10px}
   .btn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;padding:12px 18px;cursor:pointer;border:1px solid;transition:.14s}
   .btn.primary{background:var(--phos);border-color:var(--phos);color:var(--void)}
@@ -282,9 +298,14 @@
   .catcard .chead .city{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint);letter-spacing:.06em;margin-top:2px}
   .catcard .chead .own{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--sky)}
   .catgrid{display:grid;grid-template-columns:repeat(3,1fr)}
+  .catgrid.two{grid-template-columns:repeat(2,1fr)}
   .catcol{padding:14px;border-right:1px solid var(--line-soft)}
   .catcol:last-child{border-right:none}
   .catcol.bare{border-right:none;padding:0;margin-bottom:18px}
+  /* sección de puntos de entrada (ancho completo bajo pistas/aprox) */
+  .catentries{padding:14px;border-top:1px solid var(--line-soft)}
+  .entryitem input:first-of-type{flex:0 0 38%}
+  .entryarrow{flex:0 0 auto;color:var(--ink-faint);font-family:var(--mono);font-size:13px}
   .catlbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
     margin-bottom:11px;display:flex;align-items:center;gap:8px}
   .catlbl .catn{font-size:9px;color:var(--phos);border:1px solid var(--line);padding:1px 6px;font-weight:700}
@@ -434,7 +455,7 @@
     .drawer{width:100%}
     .footer{display:none}
     .gridwrap,.feed,.brief,.catwrap{padding:13px}
-    .catgrid{grid-template-columns:1fr}
+    .catgrid,.catgrid.two{grid-template-columns:1fr}
     .catcol{border-right:none;border-bottom:1px solid var(--line-soft)}
     .catcol:last-child{border-bottom:none}
     .toasts{bottom:70px}
@@ -469,25 +490,33 @@ const UNITS = [
   {code:'ACC-SANTIAGO', name:'Centro de Control de Área Santiago', region:'Nacional'},
 ];
 
+/* Cada aeródromo tiene pistas y aproximaciones (selección operativa única), y una
+   lista de PUNTOS DE ENTRADA, cada uno con la STAR que lo sirve (configuración de catálogo). */
 const AIRPORTS = [
   {icao:'SCEL', city:'Santiago', name:'A. Merino Benítez', owner:'SCEL-TWR',
-   rwys:['17L','17R','35L','35R'], stars:['DOSO1A','IMLA2B','MORLA1C','TANGO3A'], apps:['ILS Z 17L','ILS Y 17R','RNP 35L','VOR 17R'],
-   rwy:'17L', star:'DOSO1A', app:'ILS Z 17L'},
+   rwys:['17L','17R','35L','35R'], apps:['ILS Z 17L','ILS Y 17R','RNP 35L','VOR 17R'],
+   entries:[{ep:'DOSO',star:'DOSO1A'},{ep:'IMLA',star:'IMLA2B'},{ep:'MORLA',star:'MORLA1C'},{ep:'TANGO',star:'TANGO3A'}],
+   rwy:'17L', app:'ILS Z 17L'},
   {icao:'SCDA', city:'Iquique', name:'Diego Aracena', owner:'SCDA-TWR',
-   rwys:['06','24'], stars:['UNGO1A','VITER2B'], apps:['ILS 06','RNP 24','VOR 06'],
-   rwy:'06', star:'UNGO1A', app:'ILS 06'},
+   rwys:['06','24'], apps:['ILS 06','RNP 24','VOR 06'],
+   entries:[{ep:'UNGO',star:'UNGO1A'},{ep:'VITER',star:'VITER2B'}],
+   rwy:'06', app:'ILS 06'},
   {icao:'SCFA', city:'Antofagasta', name:'Cerro Moreno', owner:'SCFA-TWR',
-   rwys:['01','19'], stars:['MORNO1A','ASTOR2C'], apps:['ILS 19','RNP 01','VOR 19'],
-   rwy:'19', star:'MORNO1A', app:'ILS 19'},
+   rwys:['01','19'], apps:['ILS 19','RNP 01','VOR 19'],
+   entries:[{ep:'MORNO',star:'MORNO1A'},{ep:'ASTOR',star:'ASTOR2C'}],
+   rwy:'19', app:'ILS 19'},
   {icao:'SCIE', city:'Concepción', name:'Carriel Sur', owner:'SCIE-TWR',
-   rwys:['02','20'], stars:['CARSU1A','BIOBI2B'], apps:['ILS 20','RNP 02','VOR 20'],
-   rwy:'20', star:'CARSU1A', app:'ILS 20'},
+   rwys:['02','20'], apps:['ILS 20','RNP 02','VOR 20'],
+   entries:[{ep:'CARSU',star:'CARSU1A'},{ep:'BIOBI',star:'BIOBI2B'}],
+   rwy:'20', app:'ILS 20'},
   {icao:'SCTE', city:'Puerto Montt', name:'El Tepual', owner:'SCTE-TWR',
-   rwys:['07','17','25','35'], stars:['TEPUL1A','LLANQ2B'], apps:['ILS 17','RNP 35','VOR 25'],
-   rwy:'17', star:'TEPUL1A', app:'ILS 17'},
+   rwys:['07','17','25','35'], apps:['ILS 17','RNP 35','VOR 25'],
+   entries:[{ep:'TEPUL',star:'TEPUL1A'},{ep:'LLANQ',star:'LLANQ2B'}],
+   rwy:'17', app:'ILS 17'},
   {icao:'SCCI', city:'Punta Arenas', name:'Presidente C. Ibáñez', owner:'SCCI-TWR',
-   rwys:['07','12','25','30'], stars:['MAGAL1A','STREE2B'], apps:['ILS 07','RNP 25','VOR 12'],
-   rwy:'07', star:'MAGAL1A', app:'ILS 07'},
+   rwys:['07','12','25','30'], apps:['ILS 07','RNP 25','VOR 12'],
+   entries:[{ep:'MAGAL',star:'MAGAL1A'},{ep:'STREE',star:'STREE2B'}],
+   rwy:'07', app:'ILS 07'},
 ];
 
 /* METAR en vivo: ya NO se usan datos sintéticos. El job de GitHub Actions
@@ -817,7 +846,7 @@ function App(){
           // detecta cambio externo para el parpadeo
           const changed=[];
           if(old && signal){
-            ['rwy','star','app'].forEach(f=>{ if(old[f]!==na[f]) changed.push(f); });
+            ['rwy','app'].forEach(f=>{ if(old[f]!==na[f]) changed.push(f); });
           }
           // el parpadeo persiste hasta que se acuse (no se auto-borra)
           return {...na, changed: signal ? (changed.length?changed:(old?old.changed:[])) : [] };
@@ -895,8 +924,8 @@ function App(){
     await publishState({_ver:ver, airports:newAirports, logs:newLogs});
   }
 
-  // publica la edición del CATÁLOGO maestro (numeración de pistas, nombres de
-  // STAR y de aproximaciones) de un aeródromo y lo difunde a todas las unidades.
+  // publica la edición del CATÁLOGO maestro (numeración de pistas, aproximaciones y
+  // puntos de entrada con su STAR) de un aeródromo y lo difunde a todas las unidades.
   // admin → cualquier unidad; unit → solo la suya (revalidado en el commit).
   async function commitCatalog(icao, lists){
     const target=airports.find(a=>a.icao===icao);
@@ -904,7 +933,7 @@ function App(){
       pushToast('warn','ACCESO DENEGADO','Tu rol no permite editar el catálogo de '+icao);
       return {error:'Sin permiso para esta unidad'};
     }
-    const rwys=cleanList(lists.rwys), stars=cleanList(lists.stars), apps=cleanList(lists.apps);
+    const rwys=cleanList(lists.rwys), apps=cleanList(lists.apps), entries=cleanEntries(lists.entries);
     if(!rwys.length) return {error:'Debe existir al menos una pista'};
     // diff para la bitácora (solo listas que cambiaron)
     const diff=[];
@@ -912,16 +941,17 @@ function App(){
       const a=(oldArr||[]).join(', '), b=newArr.join(', ');
       if(a!==b) diff.push({field, from:a||'—', to:b||'—'});
     };
-    cmp('rwys',target.rwys,rwys); cmp('stars',target.stars,stars); cmp('apps',target.apps,apps);
+    cmp('rwys',target.rwys,rwys); cmp('apps',target.apps,apps);
+    if(entriesStr(target.entries)!==entriesStr(entries))
+      diff.push({field:'entries', from:entriesStr(target.entries)||'—', to:entriesStr(entries)||'—'});
     if(!diff.length){ pushToast('ok','SIN CAMBIOS '+icao,'El catálogo ya estaba actualizado'); return {ok:true}; }
     // reconcilia la selección operativa vigente si quedó fuera del nuevo catálogo
     const rwy = rwys.includes(target.rwy)?target.rwy:rwys[0];
-    const star = stars.includes(target.star)?target.star:(stars[0]||'');
     const app = apps.includes(target.app)?target.app:(apps[0]||'');
     const ts=Date.now();
     const stamp=user.unit||ROLE_SHORT[user.role]||'ADMIN';
     const newAirports=airports.map(a=>a.icao===icao
-      ? {...a,rwys,stars,apps,rwy,star,app,updatedAt:ts,updatedBy:user.name+' · '+stamp,changed:[]}
+      ? {...a,rwys,apps,entries,rwy,app,updatedAt:ts,updatedBy:user.name+' · '+stamp,changed:[]}
       : a);
     const summary='Catálogo · '+diff.map(d=>fieldLabel(d.field)).join(', ')+' actualizado';
     const logEntry={id:ts,type:'cat',icao,unit:user.unit||stamp,user:user.name,ts,diff,summary,zulu:nowZ()};
@@ -942,13 +972,13 @@ function App(){
     const icao=(data.icao||'').trim().toUpperCase();
     if(!/^[A-Z0-9]{3,5}$/.test(icao)) return {error:'OACI inválido (3-5 caracteres alfanuméricos)'};
     if(airports.some(a=>a.icao===icao)) return {error:'Ya existe un aeródromo con ese OACI'};
-    const rwys=cleanList(data.rwys), stars=cleanList(data.stars), apps=cleanList(data.apps);
+    const rwys=cleanList(data.rwys), apps=cleanList(data.apps), entries=cleanEntries(data.entries);
     if(!rwys.length) return {error:'Debe existir al menos una pista'};
     const ts=Date.now();
     const stamp=user.unit||ROLE_SHORT[user.role]||'ADMIN';
     // la unidad propietaria es el propio aeródromo (su OACI): se crea como nueva unidad
     const newAp={icao, city:(data.city||'').trim(), name:(data.name||'').trim()||icao, owner:icao,
-      rwys, stars, apps, rwy:rwys[0], star:stars[0]||'', app:apps[0]||'',
+      rwys, apps, entries, rwy:rwys[0], app:apps[0]||'',
       updatedAt:ts, updatedBy:user.name+' · '+stamp, changed:[]};
     const newAirports=[...airports,newAp];
     const logEntry={id:ts,type:'cat',icao,unit:user.unit||stamp,user:user.name,ts,
@@ -1102,8 +1132,8 @@ function App(){
 }
 
 function fieldLabel(f){
-  return f==='rwy'?'PISTA':f==='star'?'STAR':f==='app'?'APROX':
-         f==='rwys'?'PISTAS':f==='stars'?'STARS':f==='apps'?'APROX.':
+  return f==='rwy'?'PISTA':f==='star'?'STAR':f==='app'?'APROX':f==='ep'?'PTO. ENTRADA':
+         f==='rwys'?'PISTAS':f==='stars'?'STARS':f==='apps'?'APROX.':f==='entries'?'PTOS. ENTRADA':
          f==='alta'?'ALTA':f==='baja'?'BAJA':f;
 }
 // normaliza una lista de strings: recorta, descarta vacíos y duplicados (insensible a mayúsculas)
@@ -1113,6 +1143,14 @@ function cleanList(arr){
     if(v && !seen.has(k)){ seen.add(k); out.push(v); } });
   return out;
 }
+// normaliza puntos de entrada {ep,star}: recorta, descarta sin punto y duplicados de punto
+function cleanEntries(arr){
+  const seen=new Set(), out=[];
+  (arr||[]).forEach(e=>{ const ep=((e&&e.ep)||'').trim(), star=((e&&e.star)||'').trim(), k=ep.toUpperCase();
+    if(ep && !seen.has(k)){ seen.add(k); out.push({ep,star}); } });
+  return out;
+}
+function entriesStr(arr){ return (arr||[]).map(e=>e.ep+'→'+(e.star||'—')).join(', '); }
 
 /* ---------------- Login ---------------- */
 function Login({onLogin}){
@@ -1282,10 +1320,17 @@ function AirportCard({a,user,onEdit,metars,onRemove}){
         h('b',null,a.owner),
         owns?h('span',{style:{color:'var(--phos)'}},'MI UNIDAD')
             :(user.role==='admin'?h('span',null,'ADMIN'):h('span',null,'')))),
-    h('div',{className:'opfields'},
+    h('div',{className:'opfields two'},
       fld('rwy','Pista en uso', a.rwy),
-      fld('star','STAR asignada', a.star),
       fld('app','Aproximación', a.app)),
+    (a.entries&&a.entries.length>0) && h('div',{className:'eplist'},
+      a.entries.map((e,i)=>h('div',{className:'eprow',key:i},
+        h('div',{className:'epf'},
+          h('div',{className:'k'},'Punto de entrada'),
+          h('div',{className:'val'+(e.ep?'':' empty')}, e.ep||'—')),
+        h('div',{className:'epf'},
+          h('div',{className:'k'},'STAR'),
+          h('div',{className:'val'+(e.star?'':' empty')}, e.star||'—'))))),
     m && h('div',{className:'metarline'},
       m.cat && h('span',{className:'fr '+m.cat},m.cat),
       h('span',null,m.raw),
@@ -1304,11 +1349,9 @@ function AirportCard({a,user,onEdit,metars,onRemove}){
 /* ---------------- Editor Drawer ---------------- */
 function Editor({ap,user,onClose,onSave}){
   const [rwy,setRwy]=useState(ap.rwy);
-  const [star,setStar]=useState(ap.star);
   const [app,setApp]=useState(ap.app);
   const diff=[];
   if(rwy!==ap.rwy) diff.push({field:'rwy',from:ap.rwy,to:rwy});
-  if(star!==ap.star) diff.push({field:'star',from:ap.star,to:star});
   if(app!==ap.app) diff.push({field:'app',from:ap.app,to:app});
 
   const segField=(label,opts,val,set)=>h('div',{className:'field'},
@@ -1330,8 +1373,12 @@ function Editor({ap,user,onClose,onSave}){
             h('b',null,fieldLabel(d.field)),
             h('span',{className:'from'},d.from), h('span',null,'→'), h('span',{className:'to'},d.to)))),
         segField('Pista en uso', ap.rwys, rwy, setRwy),
-        segField('STAR asignada', ap.stars, star, setStar),
         segField('Aproximación en uso', ap.apps, app, setApp),
+        (ap.entries&&ap.entries.length>0) && h('div',{className:'field'},
+          h('label',null,'Puntos de entrada ',h('span',{className:'hint'},'según catálogo')),
+          h('div',{className:'epref'},
+            ap.entries.map((e,i)=>h('div',{className:'eprefrow',key:i},
+              h('b',null,e.ep||'—'), h('span',null,'→'), h('span',{className:'s'},e.star||'—'))))),
         h('div',{className:'field'},
           h('label',null,'Observación operacional ',h('span',{className:'hint'},'opcional')),
           h('textarea',{placeholder:'Ej. cambio por viento 210/14, pista preferencial nocturna…'}))
@@ -1339,7 +1386,7 @@ function Editor({ap,user,onClose,onSave}){
       h('div',{className:'dfoot'},
         h('button',{className:'btn ghost',style:{flex:1},onClick:onClose},'Cancelar'),
         h('button',{className:'btn primary',style:{flex:2},disabled:diff.length===0,
-          onClick:()=>onSave(ap.icao,{rwy,star,app},diff)},
+          onClick:()=>onSave(ap.icao,{rwy,app},diff)},
           diff.length?('Publicar '+diff.length+' cambio'+(diff.length>1?'s':'')):'Sin cambios'))
     )
   );
@@ -1388,7 +1435,8 @@ function Briefing({airports,logs,user,metars}){
       h('div',{className:'bc'},
         mine.map(a=>h('div',{className:'brrow',key:a.icao},
           h('span',{className:'ic'},a.icao),
-          h('span',{className:'tx'},'Pista ',h('b',null,a.rwy),' · STAR ',h('b',null,a.star),' · Aprox ',h('b',null,a.app)),
+          h('span',{className:'tx'},'Pista ',h('b',null,a.rwy),' · Aprox ',h('b',null,a.app),
+            (a.entries&&a.entries.length)?' · Entradas: '+a.entries.map(e=>e.ep+'/'+(e.star||'—')).join(', '):''),
           (a.changed&&a.changed.length)?h('span',{className:'tg'},'CAMBIO RECIENTE'):null)))),
 
     h('div',{className:'brsec'},
@@ -1499,7 +1547,7 @@ function CatalogAdmin({airports,user,onSave,onCreate,onDelete}){
   );
 }
 
-/* editor de una lista (pistas / STAR / aprox): agrega, edita y elimina ítems */
+/* editor de una lista (pistas / aprox): agrega, edita y elimina ítems */
 function ListEditor({label,items,onChange,placeholder,className}){
   return h('div',{className:className||'catcol'},
     h('div',{className:'catlbl'}, label,
@@ -1512,21 +1560,38 @@ function ListEditor({label,items,onChange,placeholder,className}){
     h('button',{className:'catadd',onClick:()=>onChange([...items,''])},'+ Agregar'));
 }
 
+/* editor de puntos de entrada: cada fila es un punto de entrada con la STAR que lo sirve */
+function EntriesEditor({entries,onChange,className}){
+  const set=(i,patch)=>onChange(entries.map((x,j)=>j===i?{...x,...patch}:x));
+  return h('div',{className:className||'catcol'},
+    h('div',{className:'catlbl'},'Puntos de entrada',
+      h('span',{className:'catn'}, entries.filter(e=>(e.ep||'').trim()).length)),
+    entries.map((e,i)=>h('div',{className:'catitem entryitem',key:i},
+      h('input',{value:e.ep||'',placeholder:'Punto (ej. DOSO)',autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
+        onChange:ev=>set(i,{ep:ev.target.value.toUpperCase()})}),
+      h('span',{className:'entryarrow'},'→'),
+      h('input',{value:e.star||'',placeholder:'STAR (ej. DOSO1A)',autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
+        onChange:ev=>set(i,{star:ev.target.value.toUpperCase()})}),
+      h('button',{className:'catrm',title:'Eliminar',
+        onClick:()=>onChange(entries.filter((_,j)=>j!==i))},'✕'))),
+    h('button',{className:'catadd',onClick:()=>onChange([...entries,{ep:'',star:''}])},'+ Agregar punto de entrada'));
+}
+
 function CatalogCard({a,user,onSave,onDelete}){
   const [rwys,setRwys]=useState(a.rwys||[]);
-  const [stars,setStars]=useState(a.stars||[]);
   const [apps,setApps]=useState(a.apps||[]);
+  const [entries,setEntries]=useState(a.entries||[]);
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
   const owns=a.owner===user.unit;
-  const dirty = JSON.stringify([rwys,stars,apps])!==JSON.stringify([a.rwys||[],a.stars||[],a.apps||[]]);
+  const dirty = JSON.stringify([rwys,apps,entries])!==JSON.stringify([a.rwys||[],a.apps||[],a.entries||[]]);
 
   const save=async()=>{
     setBusy(true); setErr('');
-    const r=await onSave(a.icao,{rwys,stars,apps});
+    const r=await onSave(a.icao,{rwys,apps,entries});
     setBusy(false);
     if(r&&r.error) setErr(r.error);
   };
-  const reset=()=>{ setRwys(a.rwys||[]); setStars(a.stars||[]); setApps(a.apps||[]); setErr(''); };
+  const reset=()=>{ setRwys(a.rwys||[]); setApps(a.apps||[]); setEntries(a.entries||[]); setErr(''); };
   const del=async()=>{
     if(!window.confirm('¿Eliminar la unidad aeroportuaria "'+a.icao+'" ('+a.name+')?\nSe quitará de toda la red operacional.')) return;
     setBusy(true); setErr('');
@@ -1541,10 +1606,11 @@ function CatalogCard({a,user,onSave,onDelete}){
         h('div',{className:'nm'},a.name),
         h('div',{className:'city'}, a.city.toUpperCase()+' · '+a.owner)),
       h('div',{className:'own'}, owns?'MI UNIDAD':(user.role==='admin'?'ADMIN':''))),
-    h('div',{className:'catgrid'},
+    h('div',{className:'catgrid two'},
       h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L'}),
-      h(ListEditor,{label:'STAR', items:stars, onChange:setStars, placeholder:'Ej. DOSO1A'}),
       h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L'})),
+    h('div',{className:'catentries'},
+      h(EntriesEditor,{entries, onChange:setEntries, className:'catcol bare'})),
     h('div',{className:'catfoot'},
       onDelete && h('button',{className:'btn ghost catdel',onClick:del,disabled:busy},'Eliminar unidad'),
       err && h('span',{className:'cerr'},'⚠ '+err),
@@ -1561,12 +1627,12 @@ function AirportEditor({user,onClose,onCreate}){
   const [city,setCity]=useState('');
   const [name,setName]=useState('');
   const [rwys,setRwys]=useState(['']);
-  const [stars,setStars]=useState([]);
   const [apps,setApps]=useState([]);
+  const [entries,setEntries]=useState([]);
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
   const submit=async()=>{
     setBusy(true); setErr('');
-    const r=await onCreate({icao,city,name,rwys,stars,apps});
+    const r=await onCreate({icao,city,name,rwys,apps,entries});
     setBusy(false);
     if(r&&r.error) setErr(r.error);
   };
@@ -1590,8 +1656,8 @@ function AirportEditor({user,onClose,onCreate}){
           h('label',null,'Nombre del aeródromo'),
           h('input',{value:name,placeholder:'A. Merino Benítez',style:{fontSize:14},onChange:e=>setName(e.target.value)})),
         h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L', className:'catcol bare'}),
-        h(ListEditor,{label:'STAR', items:stars, onChange:setStars, placeholder:'Ej. DOSO1A', className:'catcol bare'}),
         h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L', className:'catcol bare'}),
+        h(EntriesEditor,{entries, onChange:setEntries, className:'catcol bare'}),
         err && h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--red)',marginTop:4}},'⚠ '+err)
       ),
       h('div',{className:'dfoot'},
