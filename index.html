@@ -284,6 +284,7 @@
   .catgrid{display:grid;grid-template-columns:repeat(3,1fr)}
   .catcol{padding:14px;border-right:1px solid var(--line-soft)}
   .catcol:last-child{border-right:none}
+  .catcol.bare{border-right:none;padding:0;margin-bottom:18px}
   .catlbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
     margin-bottom:11px;display:flex;align-items:center;gap:8px}
   .catlbl .catn{font-size:9px;color:var(--phos);border:1px solid var(--line);padding:1px 6px;font-weight:700}
@@ -301,6 +302,16 @@
   .catfoot .cerr{font-family:var(--mono);font-size:10.5px;color:var(--red);letter-spacing:.02em}
   .catfoot .cdirty{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:.06em}
   .catfoot .cspacer{margin-left:auto}
+  .catfoot .catdel{padding:9px 14px;color:var(--ink-dim);border-color:var(--line)}
+  .catfoot .catdel:hover{color:var(--red);border-color:var(--red);background:rgba(255,94,108,.08)}
+  /* tarjeta-botón de alta de unidad (mismo tamaño que la tarjeta) */
+  .catnewcard{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:100%;
+    min-height:150px;border:1px dashed var(--line);background:rgba(255,255,255,.012);cursor:pointer;
+    color:var(--ink-faint);font-family:var(--mono);text-align:center;transition:.15s;margin-bottom:16px}
+  .catnewcard:hover{border-color:var(--phos);color:var(--phos);background:rgba(63,240,168,.04)}
+  .catnewcard .p{font-size:40px;font-weight:300;line-height:.8}
+  .catnewcard .t{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700}
+  .catnewcard .s{font-size:9px;letter-spacing:.1em;color:var(--ink-faint)}
 
   /* ---------- feed / log ---------- */
   .feed{padding:18px;display:flex;flex-direction:column;gap:0}
@@ -648,6 +659,8 @@ function canEditAirport(user,ap){
 function canManageUsers(user){ return !!user && user.role==='admin'; }
 // ¿Puede el usuario acceder al módulo Catálogo? (admin = toda la red, unit = su unidad)
 function canUseCatalog(user){ return !!user && (user.role==='admin'||user.role==='unit'); }
+// ¿Puede agregar/eliminar unidades aeroportuarias? (solo Administrador General)
+function canManageAirports(user){ return !!user && user.role==='admin'; }
 const USERNAME_RE=/^[a-zA-Z0-9_-]{3,32}$/;          // claves válidas en RTDB
 
 // Admin sembrado en código (bootstrap). Se obliga a cambiar la contraseña en
@@ -891,14 +904,7 @@ function App(){
       pushToast('warn','ACCESO DENEGADO','Tu rol no permite editar el catálogo de '+icao);
       return {error:'Sin permiso para esta unidad'};
     }
-    // normaliza: recorta, descarta vacíos y duplica-insensible a mayúsculas
-    const clean=arr=>{
-      const seen=new Set(), out=[];
-      (arr||[]).forEach(x=>{ const v=(x||'').trim(); const k=v.toUpperCase();
-        if(v && !seen.has(k)){ seen.add(k); out.push(v); } });
-      return out;
-    };
-    const rwys=clean(lists.rwys), stars=clean(lists.stars), apps=clean(lists.apps);
+    const rwys=cleanList(lists.rwys), stars=cleanList(lists.stars), apps=cleanList(lists.apps);
     if(!rwys.length) return {error:'Debe existir al menos una pista'};
     // diff para la bitácora (solo listas que cambiaron)
     const diff=[];
@@ -926,6 +932,53 @@ function App(){
     pushToast('ok','CATÁLOGO '+icao, summary+' — enviado a todas las unidades');
     const ver=Date.now();
     lastVer.current=ver;
+    await publishState({_ver:ver, airports:newAirports, logs:newLogs});
+    return {ok:true};
+  }
+
+  // ALTA de una unidad aeroportuaria (solo Administrador General). Se difunde a la red.
+  async function createAirport(data){
+    if(!canManageAirports(userRef.current)) return {error:'Sin permiso'};
+    const icao=(data.icao||'').trim().toUpperCase();
+    if(!/^[A-Z0-9]{3,5}$/.test(icao)) return {error:'OACI inválido (3-5 caracteres alfanuméricos)'};
+    if(airports.some(a=>a.icao===icao)) return {error:'Ya existe un aeródromo con ese OACI'};
+    if(!data.owner) return {error:'Selecciona la unidad propietaria'};
+    const rwys=cleanList(data.rwys), stars=cleanList(data.stars), apps=cleanList(data.apps);
+    if(!rwys.length) return {error:'Debe existir al menos una pista'};
+    const ts=Date.now();
+    const stamp=user.unit||ROLE_SHORT[user.role]||'ADMIN';
+    const newAp={icao, city:(data.city||'').trim(), name:(data.name||'').trim()||icao, owner:data.owner,
+      rwys, stars, apps, rwy:rwys[0], star:stars[0]||'', app:apps[0]||'',
+      updatedAt:ts, updatedBy:user.name+' · '+stamp, changed:[]};
+    const newAirports=[...airports,newAp];
+    const logEntry={id:ts,type:'cat',icao,unit:user.unit||stamp,user:user.name,ts,
+      diff:[{field:'alta',from:'—',to:icao+' · '+newAp.name}],
+      summary:'Aeródromo '+icao+' agregado a la red',zulu:nowZ()};
+    const newLogs=[logEntry,...logs].slice(0,200);
+    seenLogs.current.add(ts);
+    setAirports(newAirports); setLogs(newLogs);
+    pushToast('ok','AERÓDROMO CREADO',icao+' · '+newAp.name);
+    const ver=Date.now(); lastVer.current=ver;
+    await publishState({_ver:ver, airports:newAirports, logs:newLogs});
+    return {ok:true};
+  }
+
+  // BAJA de una unidad aeroportuaria (solo Administrador General). Se difunde a la red.
+  async function removeAirport(icao){
+    if(!canManageAirports(userRef.current)) return {error:'Sin permiso'};
+    const target=airports.find(a=>a.icao===icao);
+    if(!target) return {error:'No existe'};
+    const ts=Date.now();
+    const stamp=user.unit||ROLE_SHORT[user.role]||'ADMIN';
+    const newAirports=airports.filter(a=>a.icao!==icao);
+    const logEntry={id:ts,type:'cat',icao,unit:user.unit||stamp,user:user.name,ts,
+      diff:[{field:'baja',from:icao,to:'eliminado de la red'}],
+      summary:'Aeródromo '+icao+' eliminado de la red',zulu:nowZ()};
+    const newLogs=[logEntry,...logs].slice(0,200);
+    seenLogs.current.add(ts);
+    setAirports(newAirports); setLogs(newLogs);
+    pushToast('ok','AERÓDROMO ELIMINADO',icao);
+    const ver=Date.now(); lastVer.current=ver;
     await publishState({_ver:ver, airports:newAirports, logs:newLogs});
     return {ok:true};
   }
@@ -1028,7 +1081,8 @@ function App(){
           watch,onAddWatch:addWatch,onRemoveWatch:removeWatch}),
         view==='log' && h(LogView,{logs,user}),
         view==='brief' && h(Briefing,{airports,logs,user,metars}),
-        view==='catalog' && canUseCatalog(user) && h(CatalogAdmin,{airports,user,onSave:commitCatalog}),
+        view==='catalog' && canUseCatalog(user) && h(CatalogAdmin,{airports,user,onSave:commitCatalog,
+          onCreate:createAirport,onDelete:removeAirport}),
         view==='users' && canManageUsers(user) && h(UsersAdmin,{users,currentUser:user,
           onNew:()=>setEditingUser({__new:true}),onEdit:u=>setEditingUser(u),onDelete:removeUser}),
       )
@@ -1050,7 +1104,15 @@ function App(){
 
 function fieldLabel(f){
   return f==='rwy'?'PISTA':f==='star'?'STAR':f==='app'?'APROX':
-         f==='rwys'?'PISTAS':f==='stars'?'STARS':f==='apps'?'APROX.':f;
+         f==='rwys'?'PISTAS':f==='stars'?'STARS':f==='apps'?'APROX.':
+         f==='alta'?'ALTA':f==='baja'?'BAJA':f;
+}
+// normaliza una lista de strings: recorta, descarta vacíos y duplicados (insensible a mayúsculas)
+function cleanList(arr){
+  const seen=new Set(), out=[];
+  (arr||[]).forEach(x=>{ const v=(x||'').trim(), k=v.toUpperCase();
+    if(v && !seen.has(k)){ seen.add(k); out.push(v); } });
+  return out;
 }
 
 /* ---------------- Login ---------------- */
@@ -1447,8 +1509,10 @@ function MobileTabs({view,setView,changedNow,user}){
    Edita el listado MAESTRO de cada aeródromo (numeración de pistas, nombres de
    STAR y de aproximaciones) que alimenta los selectores del visor operacional.
    Admin → toda la red; Usuario de unidad → solo su unidad. */
-function CatalogAdmin({airports,user,onSave}){
+function CatalogAdmin({airports,user,onSave,onCreate,onDelete}){
+  const [adding,setAdding]=useState(false);
   const editable=airports.filter(a=>canEditAirport(user,a));
+  const isAdmin=canManageAirports(user);
   const scope = user.role==='admin' ? 'TODA LA RED' : (user.unit||'MI UNIDAD');
   return h('div',null,
     h('div',{className:'phead',style:{borderTop:'none'}},
@@ -1457,30 +1521,41 @@ function CatalogAdmin({airports,user,onSave}){
     h('div',{className:'catwrap'},
       h('div',{className:'catnote'},
         'Edita el listado maestro de pistas (numeración), nombres de STAR y de aproximaciones de cada aeródromo. ',
-        'Estos valores alimentan los selectores del visor operacional; al guardar, los cambios se publican a todas las unidades.'),
-      editable.length===0
-        ? h('div',{className:'empty'},'No tienes aeródromos asignados para editar.')
-        : editable.map(a=>h(CatalogCard,{key:a.icao+'_'+a.updatedAt,a,user,onSave})))
+        'Estos valores alimentan los selectores del visor operacional; al guardar, los cambios se publican a todas las unidades.',
+        isAdmin && h('span',null,' Como Administrador General también puedes agregar o eliminar unidades aeroportuarias.')),
+      (editable.length===0 && !isAdmin) &&
+        h('div',{className:'empty'},'No tienes aeródromos asignados para editar.'),
+      editable.map(a=>h(CatalogCard,{key:a.icao+'_'+a.updatedAt,a,user,onSave,
+        onDelete:isAdmin?onDelete:null})),
+      isAdmin && h('button',{className:'catnewcard',onClick:()=>setAdding(true)},
+        h('div',{className:'p'},'+'),
+        h('div',{className:'t'},'Agregar unidad aeroportuaria'),
+        h('div',{className:'s'},'Alta de un nuevo aeródromo en la red')),
+      adding && h(AirportEditor,{user,onClose:()=>setAdding(false),
+        onCreate:async d=>{const r=await onCreate(d); if(r&&r.ok)setAdding(false); return r;}}))
   );
 }
 
-function CatalogCard({a,user,onSave}){
+/* editor de una lista (pistas / STAR / aprox): agrega, edita y elimina ítems */
+function ListEditor({label,items,onChange,placeholder,className}){
+  return h('div',{className:className||'catcol'},
+    h('div',{className:'catlbl'}, label,
+      h('span',{className:'catn'}, items.filter(x=>(x||'').trim()).length)),
+    items.map((v,i)=>h('div',{className:'catitem',key:i},
+      h('input',{value:v,placeholder,autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
+        onChange:e=>onChange(items.map((x,j)=>j===i?e.target.value.toUpperCase():x))}),
+      h('button',{className:'catrm',title:'Eliminar',
+        onClick:()=>onChange(items.filter((_,j)=>j!==i))},'✕'))),
+    h('button',{className:'catadd',onClick:()=>onChange([...items,''])},'+ Agregar'));
+}
+
+function CatalogCard({a,user,onSave,onDelete}){
   const [rwys,setRwys]=useState(a.rwys||[]);
   const [stars,setStars]=useState(a.stars||[]);
   const [apps,setApps]=useState(a.apps||[]);
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
   const owns=a.owner===user.unit;
   const dirty = JSON.stringify([rwys,stars,apps])!==JSON.stringify([a.rwys||[],a.stars||[],a.apps||[]]);
-
-  const col=(label,items,set,placeholder)=>h('div',{className:'catcol'},
-    h('div',{className:'catlbl'}, label,
-      h('span',{className:'catn'}, items.filter(x=>(x||'').trim()).length)),
-    items.map((v,i)=>h('div',{className:'catitem',key:i},
-      h('input',{value:v,placeholder,autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
-        onChange:e=>set(items.map((x,j)=>j===i?e.target.value.toUpperCase():x))}),
-      h('button',{className:'catrm',title:'Eliminar',
-        onClick:()=>set(items.filter((_,j)=>j!==i))},'✕'))),
-    h('button',{className:'catadd',onClick:()=>set([...items,''])},'+ Agregar'));
 
   const save=async()=>{
     setBusy(true); setErr('');
@@ -1489,6 +1564,12 @@ function CatalogCard({a,user,onSave}){
     if(r&&r.error) setErr(r.error);
   };
   const reset=()=>{ setRwys(a.rwys||[]); setStars(a.stars||[]); setApps(a.apps||[]); setErr(''); };
+  const del=async()=>{
+    if(!window.confirm('¿Eliminar la unidad aeroportuaria "'+a.icao+'" ('+a.name+')?\nSe quitará de toda la red operacional.')) return;
+    setBusy(true); setErr('');
+    const r=await onDelete(a.icao);
+    if(r&&r.error){ setBusy(false); setErr(r.error); }
+  };
 
   return h('div',{className:'catcard'},
     h('div',{className:'chead'},
@@ -1498,16 +1579,70 @@ function CatalogCard({a,user,onSave}){
         h('div',{className:'city'}, a.city.toUpperCase()+' · '+a.owner)),
       h('div',{className:'own'}, owns?'MI UNIDAD':(user.role==='admin'?'ADMIN':''))),
     h('div',{className:'catgrid'},
-      col('Pistas', rwys, setRwys, 'Ej. 17L'),
-      col('STAR', stars, setStars, 'Ej. DOSO1A'),
-      col('Aproximaciones', apps, setApps, 'Ej. ILS Z 17L')),
+      h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L'}),
+      h(ListEditor,{label:'STAR', items:stars, onChange:setStars, placeholder:'Ej. DOSO1A'}),
+      h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L'})),
     h('div',{className:'catfoot'},
+      onDelete && h('button',{className:'btn ghost catdel',onClick:del,disabled:busy},'Eliminar unidad'),
       err && h('span',{className:'cerr'},'⚠ '+err),
       dirty && !err && h('span',{className:'cdirty'},'● Cambios sin publicar'),
       h('span',{className:'cspacer'}),
       dirty && h('button',{className:'btn ghost',style:{padding:'9px 14px'},onClick:reset,disabled:busy},'Descartar'),
       h('button',{className:'btn primary',style:{padding:'9px 16px'},disabled:busy||!dirty,onClick:save},
         busy?'Publicando…':'Publicar catálogo')));
+}
+
+/* ---------------- Alta de unidad aeroportuaria (Administrador General) ---------------- */
+function AirportEditor({user,onClose,onCreate}){
+  const [icao,setIcao]=useState('');
+  const [city,setCity]=useState('');
+  const [name,setName]=useState('');
+  const [owner,setOwner]=useState('');
+  const [rwys,setRwys]=useState(['']);
+  const [stars,setStars]=useState([]);
+  const [apps,setApps]=useState([]);
+  const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
+  const submit=async()=>{
+    setBusy(true); setErr('');
+    const r=await onCreate({icao,city,name,owner,rwys,stars,apps});
+    setBusy(false);
+    if(r&&r.error) setErr(r.error);
+  };
+  return h('div',{className:'scrim',onClick:e=>{if(e.target.className==='scrim')onClose();}},
+    h('div',{className:'drawer'},
+      h('div',{className:'dhead'},
+        h('div',{className:'icao',style:{fontSize:18}}, icao.trim()?icao.trim().toUpperCase():'NUEVO'),
+        h('div',null,
+          h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-dim)',letterSpacing:'.04em'}},'Agregar unidad aeroportuaria'),
+          h('div',{style:{fontFamily:'var(--mono)',fontSize:9.5,color:'var(--ink-faint)',marginTop:3,letterSpacing:'.1em'}},'ALTA EN LA RED OPERACIONAL')),
+        h('button',{className:'x',onClick:onClose},'✕')),
+      h('div',{className:'dbody'},
+        h('div',{className:'field'},
+          h('label',null,'OACI ',h('span',{className:'hint'},'3-5 · ej. SCEL')),
+          h('input',{value:icao,autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
+            placeholder:'SCEL',onChange:e=>setIcao(e.target.value.toUpperCase())})),
+        h('div',{className:'field'},
+          h('label',null,'Ciudad'),
+          h('input',{value:city,placeholder:'Santiago',style:{fontSize:14},onChange:e=>setCity(e.target.value)})),
+        h('div',{className:'field'},
+          h('label',null,'Nombre del aeródromo'),
+          h('input',{value:name,placeholder:'A. Merino Benítez',style:{fontSize:14},onChange:e=>setName(e.target.value)})),
+        h('div',{className:'field'},
+          h('label',null,'Unidad propietaria'),
+          h('select',{value:owner,onChange:e=>setOwner(e.target.value)},
+            h('option',{value:''},'— Selecciona unidad —'),
+            UNITS.map(u=>h('option',{key:u.code,value:u.code},u.code+' · '+u.name)))),
+        h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L', className:'catcol bare'}),
+        h(ListEditor,{label:'STAR', items:stars, onChange:setStars, placeholder:'Ej. DOSO1A', className:'catcol bare'}),
+        h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L', className:'catcol bare'}),
+        err && h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--red)',marginTop:4}},'⚠ '+err)
+      ),
+      h('div',{className:'dfoot'},
+        h('button',{className:'btn ghost',style:{flex:1},onClick:onClose},'Cancelar'),
+        h('button',{className:'btn primary',style:{flex:2},disabled:busy,onClick:submit},
+          busy?'Creando…':'Crear aeródromo'))
+    )
+  );
 }
 
 /* ---------------- Gestión de usuarios (Administrador General) ---------------- */
