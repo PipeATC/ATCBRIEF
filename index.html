@@ -681,12 +681,12 @@ const ROLE_LABEL={
   general:'Usuario General',
 };
 const ROLE_SHORT={admin:'ADMIN',unit:'UNIDAD',sector:'SECTOR',general:'GENERAL'};
-const TAB_LABEL={viewer:'Visor',log:'Bitácora',brief:'Briefing',catalog:'Catálogo',users:'Usuarios'};
+const TAB_LABEL={viewer:'Visor',log:'Registro',brief:'Briefing',catalog:'Database',users:'Usuarios'};
 const RAIL_META={
   viewer:['Visor operacional',Ic.tower],
-  log:['Bitácora de cambios',Ic.log],
+  log:['Registro de cambios',Ic.log],
   brief:['Briefing de turno',Ic.brief],
-  catalog:['Catálogo de datos',Ic.cfg],
+  catalog:['Database operacional',Ic.cfg],
   users:['Gestión de usuarios',Ic.users],
 };
 
@@ -1526,7 +1526,7 @@ function Editor({ap,user,onClose,onSave}){
 function LogView({logs,user}){
   return h('div',null,
     h('div',{className:'phead',style:{borderTop:'none'}},
-      h('h3',null,'Bitácora de cambios operacionales'),
+      h('h3',null,'Registro de cambios operacionales'),
       h('span',{className:'sub'},logs.length+' EVENTOS · RED NACIONAL')),
     logs.length===0
       ? h('div',{className:'empty'},'Sin cambios registrados en este turno. Las publicaciones de cualquier unidad aparecerán aquí en tiempo real.')
@@ -1661,7 +1661,7 @@ function CatalogAdmin({airports,user,onSave,onCreate,onDelete}){
   const current=editing?airports.find(a=>a.icao===editing):null;
   return h('div',null,
     h('div',{className:'phead',style:{borderTop:'none'}},
-      h('h3',null,'Catálogo de unidades aeroportuarias'),
+      h('h3',null,'Database de unidades aeroportuarias'),
       h('span',{className:'sub'}, editable.length+' AERÓDROMO'+(editable.length===1?'':'S')+' · '+scope)),
     h('div',{className:'catwrap'},
       h('div',{className:'catnote'},
@@ -1960,7 +1960,7 @@ function UserEditor({rec,currentUser,airports,onClose,onCreate,onSave}){
           unitOpts.length===0
             ? h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--amber)',
                 border:'1px solid var(--amber-deep)',padding:'10px 12px',lineHeight:1.5}},
-                'No hay unidades en el catálogo. Crea primero un aeródromo en el módulo Catálogo.')
+                'No hay unidades en el catálogo. Crea primero un aeródromo en el módulo Database.')
             : multi
               ? h('div',{style:{display:'flex',flexDirection:'column',gap:6,maxHeight:200,overflowY:'auto',
                   border:'1px solid var(--line)',padding:'8px 10px'}},
