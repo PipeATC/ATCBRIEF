@@ -271,6 +271,37 @@
   .diffrow .from{color:var(--ink-faint);text-decoration:line-through}
   .diffrow .to{color:var(--phos);font-weight:700}
 
+  /* ---------- catálogo (pistas / STAR / aprox) ---------- */
+  .catwrap{padding:18px;max-width:1120px}
+  .catnote{font-family:var(--mono);font-size:11px;color:var(--ink-dim);line-height:1.6;
+    border:1px solid var(--line-soft);background:var(--panel-2);padding:12px 14px;margin-bottom:16px;letter-spacing:.02em}
+  .catcard{border:1px solid var(--line);background:linear-gradient(180deg,var(--panel-2),var(--panel));margin-bottom:16px}
+  .catcard .chead{display:flex;align-items:center;gap:13px;padding:13px 15px;border-bottom:1px solid var(--line-soft)}
+  .catcard .chead .icao{font-family:var(--mono);font-weight:800;font-size:21px;color:var(--phos);text-shadow:var(--glow);line-height:1}
+  .catcard .chead .nm{font-size:12px;color:var(--ink);font-weight:600}
+  .catcard .chead .city{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint);letter-spacing:.06em;margin-top:2px}
+  .catcard .chead .own{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--sky)}
+  .catgrid{display:grid;grid-template-columns:repeat(3,1fr)}
+  .catcol{padding:14px;border-right:1px solid var(--line-soft)}
+  .catcol:last-child{border-right:none}
+  .catlbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+    margin-bottom:11px;display:flex;align-items:center;gap:8px}
+  .catlbl .catn{font-size:9px;color:var(--phos);border:1px solid var(--line);padding:1px 6px;font-weight:700}
+  .catitem{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .catitem input{flex:1;min-width:0;background:var(--void);border:1px solid var(--line);color:var(--phos);
+    font-family:var(--mono);font-size:13px;font-weight:700;padding:8px 10px;outline:none;letter-spacing:.04em}
+  .catitem input:focus{border-color:var(--phos);box-shadow:0 0 0 1px var(--phos)}
+  .catrm{flex:0 0 auto;width:30px;height:34px;background:var(--void);border:1px solid var(--line);
+    color:var(--ink-faint);cursor:pointer;font-size:12px;transition:.13s}
+  .catrm:hover{color:var(--red);border-color:var(--red)}
+  .catadd{width:100%;background:none;border:1px dashed var(--line);color:var(--ink-dim);font-family:var(--mono);
+    font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:8px;cursor:pointer;transition:.13s;margin-top:4px}
+  .catadd:hover{border-color:var(--phos);color:var(--phos);background:rgba(63,240,168,.04)}
+  .catfoot{display:flex;align-items:center;gap:12px;padding:12px 15px;border-top:1px solid var(--line-soft);background:rgba(0,0,0,.18)}
+  .catfoot .cerr{font-family:var(--mono);font-size:10.5px;color:var(--red);letter-spacing:.02em}
+  .catfoot .cdirty{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:.06em}
+  .catfoot .cspacer{margin-left:auto}
+
   /* ---------- feed / log ---------- */
   .feed{padding:18px;display:flex;flex-direction:column;gap:0}
   .levt{display:flex;gap:13px;padding:13px 0;border-bottom:1px solid var(--line-soft)}
@@ -391,7 +422,10 @@
     .mtab button .dot{position:absolute;top:8px;right:50%;margin-right:-16px;width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
     .drawer{width:100%}
     .footer{display:none}
-    .gridwrap,.feed,.brief{padding:13px}
+    .gridwrap,.feed,.brief,.catwrap{padding:13px}
+    .catgrid{grid-template-columns:1fr}
+    .catcol{border-right:none;border-bottom:1px solid var(--line-soft)}
+    .catcol:last-child{border-bottom:none}
     .toasts{bottom:70px}
   }
 </style>
@@ -468,6 +502,9 @@ const Ic = {
     h('circle',{cx:11,cy:11,r:7}),h('path',{d:'m21 21-4.3-4.3'})),
   users:(p)=>h('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.6,...p},
     h('path',{d:'M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM22 19v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11'})),
+  cfg:(p)=>h('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.6,...p},
+    h('path',{d:'M4 6h9M19 6h1M4 12h1M11 12h9M4 18h5M15 18h5'}),
+    h('circle',{cx:16,cy:6,r:2}),h('circle',{cx:8,cy:12,r:2}),h('circle',{cx:12,cy:18,r:2})),
 };
 
 const GLYPH = h('svg',{className:'glyph',viewBox:'0 0 48 48',fill:'none'},
@@ -583,19 +620,20 @@ const ROLE_LABEL={
   general:'Usuario General',
 };
 const ROLE_SHORT={admin:'ADMIN',unit:'UNIDAD',sector:'SECTOR',general:'GENERAL'};
-const TAB_LABEL={viewer:'Visor',log:'Bitácora',brief:'Briefing',users:'Usuarios'};
+const TAB_LABEL={viewer:'Visor',log:'Bitácora',brief:'Briefing',catalog:'Catálogo',users:'Usuarios'};
 const RAIL_META={
   viewer:['Visor operacional',Ic.tower],
   log:['Bitácora de cambios',Ic.log],
   brief:['Briefing de turno',Ic.brief],
+  catalog:['Catálogo de datos',Ic.cfg],
   users:['Gestión de usuarios',Ic.users],
 };
 
 // Pestañas permitidas por rol (control de rutas / navegación)
 function viewsFor(role){
   switch(role){
-    case 'admin':  return ['viewer','log','brief','users'];
-    case 'unit':   return ['viewer','log','brief'];
+    case 'admin':  return ['viewer','log','brief','catalog','users'];
+    case 'unit':   return ['viewer','log','brief','catalog'];
     case 'sector': return ['viewer','log','brief'];
     default:       return ['brief']; // general
   }
@@ -608,6 +646,8 @@ function canEditAirport(user,ap){
   return false;                                    // sector / general → lectura
 }
 function canManageUsers(user){ return !!user && user.role==='admin'; }
+// ¿Puede el usuario acceder al módulo Catálogo? (admin = toda la red, unit = su unidad)
+function canUseCatalog(user){ return !!user && (user.role==='admin'||user.role==='unit'); }
 const USERNAME_RE=/^[a-zA-Z0-9_-]{3,32}$/;          // claves válidas en RTDB
 
 // Admin sembrado en código (bootstrap). Se obliga a cambiar la contraseña en
@@ -842,6 +882,54 @@ function App(){
     await publishState({_ver:ver, airports:newAirports, logs:newLogs});
   }
 
+  // publica la edición del CATÁLOGO maestro (numeración de pistas, nombres de
+  // STAR y de aproximaciones) de un aeródromo y lo difunde a todas las unidades.
+  // admin → cualquier unidad; unit → solo la suya (revalidado en el commit).
+  async function commitCatalog(icao, lists){
+    const target=airports.find(a=>a.icao===icao);
+    if(!canEditAirport(user,target)){
+      pushToast('warn','ACCESO DENEGADO','Tu rol no permite editar el catálogo de '+icao);
+      return {error:'Sin permiso para esta unidad'};
+    }
+    // normaliza: recorta, descarta vacíos y duplica-insensible a mayúsculas
+    const clean=arr=>{
+      const seen=new Set(), out=[];
+      (arr||[]).forEach(x=>{ const v=(x||'').trim(); const k=v.toUpperCase();
+        if(v && !seen.has(k)){ seen.add(k); out.push(v); } });
+      return out;
+    };
+    const rwys=clean(lists.rwys), stars=clean(lists.stars), apps=clean(lists.apps);
+    if(!rwys.length) return {error:'Debe existir al menos una pista'};
+    // diff para la bitácora (solo listas que cambiaron)
+    const diff=[];
+    const cmp=(field,oldArr,newArr)=>{
+      const a=(oldArr||[]).join(', '), b=newArr.join(', ');
+      if(a!==b) diff.push({field, from:a||'—', to:b||'—'});
+    };
+    cmp('rwys',target.rwys,rwys); cmp('stars',target.stars,stars); cmp('apps',target.apps,apps);
+    if(!diff.length){ pushToast('ok','SIN CAMBIOS '+icao,'El catálogo ya estaba actualizado'); return {ok:true}; }
+    // reconcilia la selección operativa vigente si quedó fuera del nuevo catálogo
+    const rwy = rwys.includes(target.rwy)?target.rwy:rwys[0];
+    const star = stars.includes(target.star)?target.star:(stars[0]||'');
+    const app = apps.includes(target.app)?target.app:(apps[0]||'');
+    const ts=Date.now();
+    const stamp=user.unit||ROLE_SHORT[user.role]||'ADMIN';
+    const newAirports=airports.map(a=>a.icao===icao
+      ? {...a,rwys,stars,apps,rwy,star,app,updatedAt:ts,updatedBy:user.name+' · '+stamp,changed:[]}
+      : a);
+    const summary='Catálogo · '+diff.map(d=>fieldLabel(d.field)).join(', ')+' actualizado';
+    const logEntry={id:ts,type:'cat',icao,unit:user.unit||stamp,user:user.name,ts,diff,summary,zulu:nowZ()};
+    const newLogs=[logEntry,...logs].slice(0,200);
+    seenLogs.current.add(ts);          // nuestro propio cambio no debe auto-alertarnos
+    setAirports(newAirports);
+    setLogs(newLogs);
+    pushToast('ok','CATÁLOGO '+icao, summary+' — enviado a todas las unidades');
+    const ver=Date.now();
+    lastVer.current=ver;
+    await publishState({_ver:ver, airports:newAirports, logs:newLogs});
+    return {ok:true};
+  }
+
   // autenticación: valida credenciales contra la base de usuarios y, recién
   // autenticado, fija perfil (rol/unidad) y la vista inicial según atribuciones
   async function login(username,password){
@@ -940,6 +1028,7 @@ function App(){
           watch,onAddWatch:addWatch,onRemoveWatch:removeWatch}),
         view==='log' && h(LogView,{logs,user}),
         view==='brief' && h(Briefing,{airports,logs,user,metars}),
+        view==='catalog' && canUseCatalog(user) && h(CatalogAdmin,{airports,user,onSave:commitCatalog}),
         view==='users' && canManageUsers(user) && h(UsersAdmin,{users,currentUser:user,
           onNew:()=>setEditingUser({__new:true}),onEdit:u=>setEditingUser(u),onDelete:removeUser}),
       )
@@ -959,7 +1048,10 @@ function App(){
   );
 }
 
-function fieldLabel(f){return f==='rwy'?'PISTA':f==='star'?'STAR':f==='app'?'APROX':f;}
+function fieldLabel(f){
+  return f==='rwy'?'PISTA':f==='star'?'STAR':f==='app'?'APROX':
+         f==='rwys'?'PISTAS':f==='stars'?'STARS':f==='apps'?'APROX.':f;
+}
 
 /* ---------------- Login ---------------- */
 function Login({onLogin}){
@@ -1349,6 +1441,73 @@ function MobileTabs({view,setView,changedNow,user}){
   return h('div',{className:'mtab'},
     items.map(([k,l,Icon])=>h('button',{key:k,className:view===k?'on':'',onClick:()=>setView(k)},
       Icon({}), l, (k==='viewer'&&changedNow>0)&&h('span',{className:'dot'}))));
+}
+
+/* ---------------- Catálogo: pistas, STAR y aproximaciones ----------------
+   Edita el listado MAESTRO de cada aeródromo (numeración de pistas, nombres de
+   STAR y de aproximaciones) que alimenta los selectores del visor operacional.
+   Admin → toda la red; Usuario de unidad → solo su unidad. */
+function CatalogAdmin({airports,user,onSave}){
+  const editable=airports.filter(a=>canEditAirport(user,a));
+  const scope = user.role==='admin' ? 'TODA LA RED' : (user.unit||'MI UNIDAD');
+  return h('div',null,
+    h('div',{className:'phead',style:{borderTop:'none'}},
+      h('h3',null,'Catálogo de pistas, STAR y aproximaciones'),
+      h('span',{className:'sub'}, editable.length+' AERÓDROMO'+(editable.length===1?'':'S')+' · '+scope)),
+    h('div',{className:'catwrap'},
+      h('div',{className:'catnote'},
+        'Edita el listado maestro de pistas (numeración), nombres de STAR y de aproximaciones de cada aeródromo. ',
+        'Estos valores alimentan los selectores del visor operacional; al guardar, los cambios se publican a todas las unidades.'),
+      editable.length===0
+        ? h('div',{className:'empty'},'No tienes aeródromos asignados para editar.')
+        : editable.map(a=>h(CatalogCard,{key:a.icao+'_'+a.updatedAt,a,user,onSave})))
+  );
+}
+
+function CatalogCard({a,user,onSave}){
+  const [rwys,setRwys]=useState(a.rwys||[]);
+  const [stars,setStars]=useState(a.stars||[]);
+  const [apps,setApps]=useState(a.apps||[]);
+  const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
+  const owns=a.owner===user.unit;
+  const dirty = JSON.stringify([rwys,stars,apps])!==JSON.stringify([a.rwys||[],a.stars||[],a.apps||[]]);
+
+  const col=(label,items,set,placeholder)=>h('div',{className:'catcol'},
+    h('div',{className:'catlbl'}, label,
+      h('span',{className:'catn'}, items.filter(x=>(x||'').trim()).length)),
+    items.map((v,i)=>h('div',{className:'catitem',key:i},
+      h('input',{value:v,placeholder,autoCapitalize:'characters',autoCorrect:'off',spellCheck:false,
+        onChange:e=>set(items.map((x,j)=>j===i?e.target.value.toUpperCase():x))}),
+      h('button',{className:'catrm',title:'Eliminar',
+        onClick:()=>set(items.filter((_,j)=>j!==i))},'✕'))),
+    h('button',{className:'catadd',onClick:()=>set([...items,''])},'+ Agregar'));
+
+  const save=async()=>{
+    setBusy(true); setErr('');
+    const r=await onSave(a.icao,{rwys,stars,apps});
+    setBusy(false);
+    if(r&&r.error) setErr(r.error);
+  };
+  const reset=()=>{ setRwys(a.rwys||[]); setStars(a.stars||[]); setApps(a.apps||[]); setErr(''); };
+
+  return h('div',{className:'catcard'},
+    h('div',{className:'chead'},
+      h('div',{className:'icao'},a.icao),
+      h('div',null,
+        h('div',{className:'nm'},a.name),
+        h('div',{className:'city'}, a.city.toUpperCase()+' · '+a.owner)),
+      h('div',{className:'own'}, owns?'MI UNIDAD':(user.role==='admin'?'ADMIN':''))),
+    h('div',{className:'catgrid'},
+      col('Pistas', rwys, setRwys, 'Ej. 17L'),
+      col('STAR', stars, setStars, 'Ej. DOSO1A'),
+      col('Aproximaciones', apps, setApps, 'Ej. ILS Z 17L')),
+    h('div',{className:'catfoot'},
+      err && h('span',{className:'cerr'},'⚠ '+err),
+      dirty && !err && h('span',{className:'cdirty'},'● Cambios sin publicar'),
+      h('span',{className:'cspacer'}),
+      dirty && h('button',{className:'btn ghost',style:{padding:'9px 14px'},onClick:reset,disabled:busy},'Descartar'),
+      h('button',{className:'btn primary',style:{padding:'9px 16px'},disabled:busy||!dirty,onClick:save},
+        busy?'Publicando…':'Publicar catálogo')));
 }
 
 /* ---------------- Gestión de usuarios (Administrador General) ---------------- */
