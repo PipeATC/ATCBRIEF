@@ -1073,7 +1073,6 @@ function App(){
   return h('div',{style:{display:'contents'}},
     h(TopBar,{user,clock,view,setView,unread,onLogout:()=>setUser(null)}),
     h('div',{className:'stage'},
-      h(Rail,{user,view,setView,mine,changedNow}),
       h('div',{className:'content'},
         alerts.length>0 && h(AlertBanner,{alerts,onAck:ackAlert,onAckAll:ackAll}),
         view==='viewer' && h(Viewer,{airports:visible,allAirports:airports,allCount:airports.length,mine:mine.length,changedNow,
@@ -1215,34 +1214,6 @@ function TopBar({user,clock,view,setView,unread,onLogout}){
   );
 }
 
-/* ---------------- Rail ---------------- */
-function Rail({user,view,setView,mine,changedNow}){
-  const canEdit=user.role==='admin'||user.role==='unit';
-  return h('div',{className:'rail'},
-    h('div',{className:'sec'},
-      h('div',{className:'eyebrow'}, user.unit?'Unidad activa':'Perfil activo'),
-      h('div',{className:'unitcard'},
-        h('div',{className:'code'}, user.unit||'NACIONAL'),
-        h('div',{className:'nm'}, user.unit ? (UNITS.find(u=>u.code===user.unit)?.name||'') : ROLE_LABEL[user.role]),
-      ),
-      h('div',{style:{display:'flex',gap:8,marginTop:4,flexWrap:'wrap'}},
-        h('span',{className:'pill ok'},'EN SERVICIO'),
-        h('span',{className:'pill off'}, ROLE_SHORT[user.role]))
-    ),
-    h('div',{className:'railnav'},
-      viewsFor(user.role).map(k=>{
-        const [label,Icon]=RAIL_META[k];
-        return h('button',{key:k,className:view===k?'on':'',onClick:()=>setView(k)},
-          Icon({}), label, (k==='viewer'&&changedNow>0)&&h('span',{className:'badge'},changedNow));
-      })
-    ),
-    canEdit && h('div',{className:'sec',style:{marginTop:'auto',borderTop:'1px solid var(--line)',borderBottom:'none'}},
-      h('div',{className:'eyebrow',style:{marginBottom:8}},'A mi cargo'),
-      h('div',{style:{fontFamily:'var(--mono)',fontSize:24,fontWeight:800,color:'var(--phos)',textShadow:'var(--glow)'}}, mine.length),
-      h('div',{style:{fontFamily:'var(--mono)',fontSize:10,color:'var(--ink-faint)',marginTop:4,letterSpacing:'.08em'}}, mine.length===1?'AERÓDROMO EDITABLE':'AERÓDROMOS EDITABLES'))
-  );
-}
-
 /* ---------------- Viewer ---------------- */
 function Viewer({airports,allAirports,allCount,mine,changedNow,query,setQuery,filter,setFilter,user,onEdit,metars,watch,onAddWatch,onRemoveWatch}){
   const [adding,setAdding]=useState(false);
@@ -1250,12 +1221,6 @@ function Viewer({airports,allAirports,allCount,mine,changedNow,query,setQuery,fi
   const mineMode=filter==='mine';
   const available=allAirports.filter(a=>!watch.includes(a.icao));
   return h('div',null,
-    h('div',{className:'strip'},
-      h('div',{className:'cell'}, h('div',{className:'k'},'Aeródromos en red'), h('div',{className:'v g'},allCount)),
-      h('div',{className:'cell'}, h('div',{className:'k'},'A mi cargo'), h('div',{className:'v'},mine)),
-      h('div',{className:'cell'}, h('div',{className:'k'},'Cambios activos'), h('div',{className:'v a'},changedNow,h('small',null,' nuevos'))),
-      h('div',{className:'cell'}, h('div',{className:'k'},'Condición IFR/LIFR'), h('div',{className:'v',style:{color:ifrCount?'var(--red)':'var(--phos)'}},ifrCount))
-    ),
     h('div',{className:'gridwrap'},
       h('div',{className:'toolbar'},
         h('div',{className:'search'}, Ic.search({}),
@@ -1491,8 +1456,6 @@ function Footer({user,clock,changedNow,syncMode}){
     h('div',{className:'fi'},'UNIDAD: ',h('b',null,'\u00A0'+(user.unit||ROLE_SHORT[user.role]))),
     h('div',{className:'fi'}, changedNow>0?h('span',{style:{color:'var(--amber)'}},'⚠ '+changedNow+' cambio(s) activo(s)'):'Sin alertas activas'),
     h('div',{className:'right'},
-      h('div',{className:'fi'},'Protocolos de seguridad'),
-      h('div',{className:'fi'},'Soporte AIM Chile'),
       h('div',{className:'fi'},'Sync '+clock.hms+' Z'))
   );
 }
