@@ -1017,11 +1017,11 @@ function App(){
     if(!USERNAME_RE.test(data.username)) return {error:'Usuario inválido (3-32 · letras, números, _ o -)'};
     if(usersMapRef.current[data.username]) return {error:'Ya existe ese usuario'};
     if(!data.password||data.password.length<6) return {error:'La contraseña debe tener 6+ caracteres'};
-    if((data.role==='unit'||data.role==='sector') && !data.unit) return {error:'Selecciona la unidad asignada'};
+    if(data.role==='unit' && !data.unit) return {error:'Selecciona la unidad asignada'};
     const salt=randSalt(); const passHash=await hashPassword(data.password,salt);
     await writeUserDb(data.username,{
       username:data.username, name:data.name||data.username, role:data.role,
-      unit:(data.role==='admin'||data.role==='general')?'':data.unit,
+      unit: data.role==='unit' ? data.unit : '',   // solo el usuario de unidad tiene unidad asignada
       salt, passHash, mustChangePassword:true, active:true,
       createdAt:Date.now(), createdBy:userRef.current.name
     });
@@ -1038,8 +1038,8 @@ function App(){
       extra={salt,passHash:await hashPassword(patch.password,salt),mustChangePassword:true};
     }
     const role=patch.role||cur.role;
-    const unit=(role==='admin'||role==='general')?'':(patch.unit!==undefined?patch.unit:cur.unit);
-    if((role==='unit'||role==='sector') && !unit) return {error:'Selecciona la unidad asignada'};
+    const unit = role==='unit' ? (patch.unit!==undefined?patch.unit:cur.unit) : '';
+    if(role==='unit' && !unit) return {error:'Selecciona la unidad asignada'};
     await writeUserDb(username,{
       ...cur,
       name:patch.name!==undefined?patch.name:cur.name,
@@ -1091,7 +1091,7 @@ function App(){
     h(MobileTabs,{view,setView,changedNow,user}),
     editing && h(Editor,{ap:editing,user,onClose:()=>setEditing(null),onSave:commitChange}),
     editingUser && h(UserEditor,{
-      rec:editingUser.__new?null:editingUser, currentUser:user,
+      rec:editingUser.__new?null:editingUser, currentUser:user, airports,
       onClose:()=>setEditingUser(null),
       onCreate:async d=>{const r=await createUser(d); if(r&&r.ok)setEditingUser(null); return r;},
       onSave:async (un,p)=>{const r=await saveUser(un,p); if(r&&r.ok)setEditingUser(null); return r;},
@@ -1674,7 +1674,7 @@ function UsersAdmin({users,currentUser,onNew,onEdit,onDelete}){
 }
 
 /* ---------------- Editor de usuario (crear / editar) ---------------- */
-function UserEditor({rec,currentUser,onClose,onCreate,onSave}){
+function UserEditor({rec,currentUser,airports,onClose,onCreate,onSave}){
   const isNew=!rec;
   const [username,setUsername]=useState(rec?rec.username:'');
   const [name,setName]=useState(rec?rec.name:'');
@@ -1683,7 +1683,12 @@ function UserEditor({rec,currentUser,onClose,onCreate,onSave}){
   const [active,setActive]=useState(rec?rec.active!==false:true);
   const [password,setPassword]=useState('');
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
-  const needUnit=(role==='unit'||role==='sector');
+  const needUnit=(role==='unit');   // solo el usuario de unidad se asigna a una unidad
+  // unidades disponibles = aeródromos del catálogo (dedup por propietario)
+  const unitOpts=Array.from(new Map(
+    (airports||[]).map(a=>[a.owner,{code:a.owner,label:a.icao+' · '+a.name}])).values());
+  // si el usuario ya tenía una unidad que ya no está en el catálogo, la conservamos como opción
+  if(unit && !unitOpts.some(o=>o.code===unit)) unitOpts.unshift({code:unit,label:unit+' · (fuera de catálogo)'});
   const roleHelp =
     role==='admin'  ? 'Acceso total: gestiona usuarios y edita cualquier unidad del país.' :
     role==='unit'   ? 'Edita pistas/STAR/aprox SOLO de su unidad asignada.' :
@@ -1718,10 +1723,14 @@ function UserEditor({rec,currentUser,onClose,onCreate,onSave}){
           h('select',{value:role,onChange:e=>setRole(e.target.value)},
             ROLES.map(r=>h('option',{key:r,value:r},ROLE_LABEL[r])))),
         needUnit && h('div',{className:'field'},
-          h('label',null,'Unidad asignada'),
-          h('select',{value:unit,onChange:e=>setUnit(e.target.value)},
-            h('option',{value:''},'— Selecciona unidad —'),
-            UNITS.map(u=>h('option',{key:u.code,value:u.code},u.code+' · '+u.name)))),
+          h('label',null,'Unidad asignada ',h('span',{className:'hint'},'unidades del catálogo')),
+          unitOpts.length===0
+            ? h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--amber)',
+                border:'1px solid var(--amber-deep)',padding:'10px 12px',lineHeight:1.5}},
+                'No hay unidades en el catálogo. Crea primero un aeródromo en el módulo Catálogo.')
+            : h('select',{value:unit,onChange:e=>setUnit(e.target.value)},
+                h('option',{value:''},'— Selecciona unidad —'),
+                unitOpts.map(o=>h('option',{key:o.code,value:o.code},o.label)))),
         !isNew && h('div',{className:'field'},
           h('label',null,'Estado de la cuenta'),
           h('div',{className:'seg'},
