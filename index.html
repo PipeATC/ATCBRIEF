@@ -989,16 +989,21 @@ function App(){
     }
     const rwys=cleanList(lists.rwys), apps=cleanList(lists.apps), eps=cleanList(lists.eps), stars=cleanStars(lists.stars, eps);
     if(!rwys.length) return {error:'Debe existir al menos una pista'};
-    // diff para la bitácora (solo listas que cambiaron)
+    // datos de identificación (edición completa); si no vienen, se conservan los actuales
+    const name=(lists.name!==undefined ? (lists.name||'').trim() : target.name)||target.icao;
+    const city=(lists.city!==undefined ? (lists.city||'').trim() : (target.city||''));
+    // diff para la bitácora (solo lo que cambió)
     const diff=[];
     const cmp=(field,oldArr,newArr)=>{
       const a=(oldArr||[]).join(', '), b=newArr.join(', ');
       if(a!==b) diff.push({field, from:a||'—', to:b||'—'});
     };
+    if((target.name||'')!==name) diff.push({field:'name', from:target.name||'—', to:name});
+    if((target.city||'')!==city) diff.push({field:'city', from:target.city||'—', to:city||'—'});
     cmp('rwys',target.rwys,rwys); cmp('apps',target.apps,apps); cmp('eps',target.eps,eps);
     if(starsStr(target.stars)!==starsStr(stars))
       diff.push({field:'stars', from:starsStr(target.stars)||'—', to:starsStr(stars)||'—'});
-    if(!diff.length){ pushToast('ok','SIN CAMBIOS '+icao,'El catálogo ya estaba actualizado'); return {ok:true}; }
+    if(!diff.length){ pushToast('ok','SIN CAMBIOS '+icao,'El aeródromo ya estaba actualizado'); return {ok:true}; }
     // reconcilia la operación vigente (en uso) a lo que sigue existiendo en el catálogo
     let rwyu=(target.rwyu||[]).filter(x=>rwys.includes(x)); if(!rwyu.length) rwyu=[rwys[0]];
     const appu=(target.appu||[]).filter(x=>apps.includes(x));
@@ -1006,7 +1011,7 @@ function App(){
     const ts=Date.now();
     const stamp=(user.role==='unit'?target.owner:user.unit)||ROLE_SHORT[user.role]||'ADMIN';
     const newAirports=airports.map(a=>a.icao===icao
-      ? {...a,rwys,apps,eps,stars,rwyu,appu,epuse,updatedAt:ts,updatedBy:user.name+' · '+stamp,changed:[]}
+      ? {...a,name,city,rwys,apps,eps,stars,rwyu,appu,epuse,updatedAt:ts,updatedBy:user.name+' · '+stamp,changed:[]}
       : a);
     const summary='Catálogo · '+diff.map(d=>fieldLabel(d.field)).join(', ')+' actualizado';
     const logEntry={id:ts,type:'cat',icao,unit:stamp,user:user.name,ts,diff,summary,zulu:nowZ()};
@@ -1209,6 +1214,7 @@ function App(){
 function fieldLabel(f){
   return f==='rwyu'?'PISTAS EN USO':f==='appu'?'APROX. EN USO':f==='epuse'?'STAR EN USO':
          f==='rwys'?'PISTAS':f==='apps'?'APROX.':f==='eps'?'PTOS. ENTRADA':f==='stars'?'STARS':
+         f==='name'?'NOMBRE':f==='city'?'CIUDAD':
          f==='alta'?'ALTA':f==='baja'?'BAJA':f;
 }
 // normaliza una lista de strings: recorta, descarta vacíos y duplicados (insensible a mayúsculas)
@@ -1638,35 +1644,62 @@ function MobileTabs({view,setView,changedNow,user}){
       Icon({}), l, (k==='viewer'&&changedNow>0)&&h('span',{className:'dot'}))));
 }
 
-/* ---------------- Catálogo: pistas, STAR y aproximaciones ----------------
-   Edita el listado MAESTRO de cada aeródromo (numeración de pistas, nombres de
-   STAR y de aproximaciones) que alimenta los selectores del visor operacional.
-   Admin → toda la red; Usuario de unidad → solo su unidad. */
+/* ---------------- Catálogo: listado de unidades aeroportuarias ----------------
+   Muestra las unidades editables como una lista; el botón Editar abre un drawer con
+   la edición completa del aeródromo (nombre, ciudad, pistas, aproximaciones, puntos
+   de entrada y STAR), que alimenta los selectores del visor operacional.
+   Admin → toda la red; Usuario de unidad → solo sus unidades. */
 function CatalogAdmin({airports,user,onSave,onCreate,onDelete}){
   const [adding,setAdding]=useState(false);
+  const [editing,setEditing]=useState(null);   // OACI del aeródromo en edición (drawer)
   const editable=airports.filter(a=>canEditAirport(user,a));
   const isAdmin=canManageAirports(user);
   const scope = user.role==='admin' ? 'TODA LA RED' : (userUnits(user).join(' · ')||'MI UNIDAD');
+  const current=editing?airports.find(a=>a.icao===editing):null;
   return h('div',null,
     h('div',{className:'phead',style:{borderTop:'none'}},
-      h('h3',null,'Catálogo de pistas, STAR y aproximaciones'),
+      h('h3',null,'Catálogo de unidades aeroportuarias'),
       h('span',{className:'sub'}, editable.length+' AERÓDROMO'+(editable.length===1?'':'S')+' · '+scope)),
     h('div',{className:'catwrap'},
       h('div',{className:'catnote'},
-        'Edita el listado maestro de pistas (numeración), nombres de STAR y de aproximaciones de cada aeródromo. ',
-        'Estos valores alimentan los selectores del visor operacional; al guardar, los cambios se publican a todas las unidades.',
+        'Selecciona una unidad y presiona Editar para modificar sus datos: nombre, ciudad, pistas (numeración), ',
+        'aproximaciones, puntos de entrada y STAR. Al guardar, los cambios se publican a todas las unidades.',
         isAdmin && h('span',null,' Como Administrador General también puedes agregar o eliminar unidades aeroportuarias.')),
       (editable.length===0 && !isAdmin) &&
         h('div',{className:'empty'},'No tienes aeródromos asignados para editar.'),
-      editable.map(a=>h(CatalogCard,{key:a.icao+'_'+a.updatedAt,a,user,onSave,
-        onDelete:isAdmin?onDelete:null})),
+      editable.length>0 && h('div',{className:'apgrid'},
+        editable.map(a=>h(CatalogListRow,{key:a.icao,a,user,
+          onEdit:()=>setEditing(a.icao),
+          onDelete:isAdmin?onDelete:null}))),
       isAdmin && h('button',{className:'catnewcard',onClick:()=>setAdding(true)},
         h('div',{className:'p'},'+'),
         h('div',{className:'t'},'Agregar unidad aeroportuaria'),
         h('div',{className:'s'},'Alta de un nuevo aeródromo en la red')),
       adding && h(AirportEditor,{user,onClose:()=>setAdding(false),
-        onCreate:async d=>{const r=await onCreate(d); if(r&&r.ok)setAdding(false); return r;}}))
+        onCreate:async d=>{const r=await onCreate(d); if(r&&r.ok)setAdding(false); return r;}}),
+      current && h(CatalogUnitEditor,{key:current.icao+'_'+current.updatedAt, a:current, user,
+        onClose:()=>setEditing(null),
+        onSave:async(icao,d)=>{const r=await onSave(icao,d); if(r&&r.ok)setEditing(null); return r;},
+        onDelete:isAdmin?async icao=>{const r=await onDelete(icao); if(r&&r.ok)setEditing(null); return r;}:null}))
   );
+}
+
+/* fila compacta de la lista de unidades del catálogo (con botón Editar) */
+function CatalogListRow({a,user,onEdit,onDelete}){
+  const owns=userUnits(user).includes(a.owner);
+  const del=()=>{ if(window.confirm('¿Eliminar la unidad aeroportuaria "'+a.icao+'" ('+a.name+')?\nSe quitará de toda la red operacional.')) onDelete(a.icao); };
+  return h('div',{className:'apcard'},
+    h('div',{className:'crest'},
+      h('div',null,
+        h('div',{className:'icao',style:{fontSize:16}}, a.icao),
+        h('div',{className:'nm'}, a.name),
+        h('div',{className:'city'}, (a.city||'').toUpperCase()+' · '+a.owner)),
+      h('div',{className:'owntag'},
+        h('b',null, owns?'MI UNIDAD':(user.role==='admin'?'ADMIN':'')))),
+    h('div',{className:'apfoot'},
+      h('span',{className:'age'}, (a.rwys||[]).length+' pista(s) · '+(a.apps||[]).length+' aprox · '+(a.eps||[]).length+' entrada(s)'),
+      h('span',{className:'editlink',onClick:onEdit},'Editar'),
+      onDelete && h('span',{className:'editlink rm',onClick:del},'Eliminar')));
 }
 
 /* editor de una lista (pistas / aprox): agrega, edita y elimina ítems */
@@ -1709,51 +1742,63 @@ function StarsEditor({stars,eps,onChange,className}){
     h('button',{className:'catadd',onClick:()=>onChange([...stars,{name:'',eps:[]}])},'+ Agregar STAR'));
 }
 
-function CatalogCard({a,user,onSave,onDelete}){
+/* ---------------- Edición completa de una unidad aeroportuaria (drawer) ----------------
+   Se abre desde el listado del Catálogo con el botón Editar. Permite modificar nombre,
+   ciudad, pistas, aproximaciones, puntos de entrada y STAR. El OACI es la identidad y no
+   se edita. admin → cualquier unidad; usuario de unidad → solo las suyas. */
+function CatalogUnitEditor({a,user,onClose,onSave,onDelete}){
+  const [name,setName]=useState(a.name||'');
+  const [city,setCity]=useState(a.city||'');
   const [rwys,setRwys]=useState(a.rwys||[]);
   const [apps,setApps]=useState(a.apps||[]);
   const [eps,setEps]=useState(a.eps||[]);
   const [stars,setStars]=useState(a.stars||[]);
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
   const owns=userUnits(user).includes(a.owner);
-  const dirty = JSON.stringify([rwys,apps,eps,stars])!==JSON.stringify([a.rwys||[],a.apps||[],a.eps||[],a.stars||[]]);
-
+  const dirty = JSON.stringify([name,city,rwys,apps,eps,stars])
+              !==JSON.stringify([a.name||'',a.city||'',a.rwys||[],a.apps||[],a.eps||[],a.stars||[]]);
   const save=async()=>{
     setBusy(true); setErr('');
-    const r=await onSave(a.icao,{rwys,apps,eps,stars});
+    const r=await onSave(a.icao,{name,city,rwys,apps,eps,stars});
     setBusy(false);
     if(r&&r.error) setErr(r.error);
   };
-  const reset=()=>{ setRwys(a.rwys||[]); setApps(a.apps||[]); setEps(a.eps||[]); setStars(a.stars||[]); setErr(''); };
   const del=async()=>{
     if(!window.confirm('¿Eliminar la unidad aeroportuaria "'+a.icao+'" ('+a.name+')?\nSe quitará de toda la red operacional.')) return;
     setBusy(true); setErr('');
     const r=await onDelete(a.icao);
     if(r&&r.error){ setBusy(false); setErr(r.error); }
   };
-
-  return h('div',{className:'catcard'},
-    h('div',{className:'chead'},
-      h('div',{className:'icao'},a.icao),
-      h('div',null,
-        h('div',{className:'nm'},a.name),
-        h('div',{className:'city'}, a.city.toUpperCase()+' · '+a.owner)),
-      h('div',{className:'own'}, owns?'MI UNIDAD':(user.role==='admin'?'ADMIN':''))),
-    h('div',{className:'catgrid two'},
-      h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L'}),
-      h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L'})),
-    h('div',{className:'catentries'},
-      h(ListEditor,{label:'Puntos de entrada', items:eps, onChange:setEps, placeholder:'Ej. DOSO', className:'catcol bare'})),
-    h('div',{className:'catentries'},
-      h(StarsEditor,{stars, eps, onChange:setStars, className:'catcol bare'})),
-    h('div',{className:'catfoot'},
-      onDelete && h('button',{className:'btn ghost catdel',onClick:del,disabled:busy},'Eliminar unidad'),
-      err && h('span',{className:'cerr'},'⚠ '+err),
-      dirty && !err && h('span',{className:'cdirty'},'● Cambios sin publicar'),
-      h('span',{className:'cspacer'}),
-      dirty && h('button',{className:'btn ghost',style:{padding:'9px 14px'},onClick:reset,disabled:busy},'Descartar'),
-      h('button',{className:'btn primary',style:{padding:'9px 16px'},disabled:busy||!dirty,onClick:save},
-        busy?'Publicando…':'Publicar catálogo')));
+  return h('div',{className:'scrim',onClick:e=>{if(e.target.className==='scrim')onClose();}},
+    h('div',{className:'drawer'},
+      h('div',{className:'dhead'},
+        h('div',{className:'icao',style:{fontSize:18}}, a.icao),
+        h('div',null,
+          h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--ink-dim)',letterSpacing:'.04em'}},'Editar unidad aeroportuaria'),
+          h('div',{style:{fontFamily:'var(--mono)',fontSize:9.5,color:'var(--ink-faint)',marginTop:3,letterSpacing:'.1em'}},
+            (owns?'MI UNIDAD':(user.role==='admin'?'ACCESO ADMIN':''))+' · '+a.owner)),
+        h('button',{className:'x',onClick:onClose},'✕')),
+      h('div',{className:'dbody'},
+        h('div',{className:'field'},
+          h('label',null,'Ciudad'),
+          h('input',{value:city,placeholder:'Santiago',style:{fontSize:14},onChange:e=>setCity(e.target.value)})),
+        h('div',{className:'field'},
+          h('label',null,'Nombre del aeródromo'),
+          h('input',{value:name,placeholder:'A. Merino Benítez',style:{fontSize:14},onChange:e=>setName(e.target.value)})),
+        h(ListEditor,{label:'Pistas', items:rwys, onChange:setRwys, placeholder:'Ej. 17L', className:'catcol bare'}),
+        h(ListEditor,{label:'Aproximaciones', items:apps, onChange:setApps, placeholder:'Ej. ILS Z 17L', className:'catcol bare'}),
+        h(ListEditor,{label:'Puntos de entrada', items:eps, onChange:setEps, placeholder:'Ej. DOSO', className:'catcol bare'}),
+        h(StarsEditor,{stars, eps, onChange:setStars, className:'catcol bare'}),
+        dirty && !err && h('div',{style:{fontFamily:'var(--mono)',fontSize:10.5,color:'var(--amber)',marginTop:4}},'● Cambios sin publicar'),
+        err && h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--red)',marginTop:4}},'⚠ '+err)
+      ),
+      h('div',{className:'dfoot'},
+        onDelete && h('button',{className:'btn ghost catdel',onClick:del,disabled:busy},'Eliminar'),
+        h('button',{className:'btn ghost',style:{flex:1},onClick:onClose},'Cancelar'),
+        h('button',{className:'btn primary',style:{flex:2},disabled:busy||!dirty,onClick:save},
+          busy?'Publicando…':'Publicar cambios'))
+    )
+  );
 }
 
 /* ---------------- Alta de unidad aeroportuaria (Administrador General) ---------------- */
