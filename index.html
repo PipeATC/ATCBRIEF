@@ -690,12 +690,19 @@ const RAIL_META={
   users:['Gestión de usuarios',Ic.users],
 };
 
-// Roles que se asignan a una unidad aeroportuaria específica (unidad y general)
-function roleNeedsUnit(role){ return role==='unit'||role==='general'; }
-// Unidades aeroportuarias que gestiona el usuario. El usuario de unidad puede tener
-// varias (units[]); general una. Acepta tanto un perfil de sesión como un registro DB.
-function userUnits(u){
+// Roles que se asignan directamente a una o varias unidades aeroportuarias.
+function roleNeedsUnit(role){ return role==='unit'; }
+// Roles que NO se asignan a una unidad, sino que pertenecen (y heredan la unidad)
+// de un Usuario de Unidad superior. El usuario general cuelga de un usuario de unidad.
+function roleNeedsParentUnit(role){ return role==='general'; }
+// Unidades aeroportuarias asociadas al usuario. El usuario de unidad las tiene
+// asignadas (units[]); el general las HEREDA de su usuario de unidad (parentUnit).
+// Pasa `usersMap` para resolver la herencia a partir de un registro de la base.
+// Acepta tanto un perfil de sesión (units ya resuelto) como un registro DB.
+function userUnits(u, usersMap){
   if(!u) return [];
+  if(u.role==='general' && u.parentUnit && usersMap && usersMap[u.parentUnit])
+    return userUnits(usersMap[u.parentUnit]);
   if(Array.isArray(u.units) && u.units.length) return u.units;
   return u.unit ? [u.unit] : [];
 }
@@ -1084,11 +1091,12 @@ function App(){
     if(rec.active===false) return {error:'Usuario inactivo. Contacta al administrador.'};
     const hash=await hashPassword(password, rec.salt||'');
     if(hash!==rec.passHash) return {error:'Contraseña incorrecta'};
-    const units=userUnits(rec);                 // una o varias unidades gestionadas
+    const units=userUnits(rec, usersMapRef.current); // unidad(es); el general las hereda de su usuario de unidad
     const primary=units[0]||'';
     const unitObj=UNITS.find(x=>x.code===primary);
     const profile={
       username, name:rec.name, role:rec.role, unit:primary, units,
+      parentUnit:rec.parentUnit||'',
       region:unitObj?unitObj.region:'', mustChangePassword:!!rec.mustChangePassword
     };
     setUser(profile);
@@ -1124,14 +1132,21 @@ function App(){
     if(!USERNAME_RE.test(data.username)) return {error:'Usuario inválido (3-32 · letras, números, _ o -)'};
     if(usersMapRef.current[data.username]) return {error:'Ya existe ese usuario'};
     if(!data.password||data.password.length<6) return {error:'La contraseña debe tener 6+ caracteres'};
-    // unidad → una o varias; general → una sola (se recorta al primer elemento)
+    // unidad → una o varias unidades asignadas directamente
     let units = roleNeedsUnit(data.role) ? (data.units||[]).filter(Boolean) : [];
-    if(data.role==='general') units=units.slice(0,1);
     if(roleNeedsUnit(data.role) && !units.length) return {error:'Selecciona al menos una unidad asignada'};
+    // general → debe pertenecer a un Usuario de Unidad (hereda sus unidades)
+    let parentUnit='';
+    if(roleNeedsParentUnit(data.role)){
+      parentUnit=(data.parentUnit||'').trim();
+      const p=usersMapRef.current[parentUnit];
+      if(!parentUnit || !p || p.role!=='unit') return {error:'Selecciona el usuario de unidad al que pertenece'};
+    }
     const salt=randSalt(); const passHash=await hashPassword(data.password,salt);
     await writeUserDb(data.username,{
       username:data.username, name:data.name||data.username, role:data.role,
       unit: units[0]||'', units,           // unit = primaria (compat); units = todas
+      parentUnit,                          // general: usuario de unidad al que pertenece
       salt, passHash, mustChangePassword:true, active:true,
       createdAt:Date.now(), createdBy:userRef.current.name
     });
@@ -1149,14 +1164,20 @@ function App(){
     }
     const role=patch.role||cur.role;
     let units = roleNeedsUnit(role)
-      ? (patch.units!==undefined ? (patch.units||[]).filter(Boolean) : userUnits(cur))
+      ? (patch.units!==undefined ? (patch.units||[]).filter(Boolean) : (cur.units||[]).filter(Boolean))
       : [];
-    if(role==='general') units=units.slice(0,1);
     if(roleNeedsUnit(role) && !units.length) return {error:'Selecciona al menos una unidad asignada'};
+    // general → debe pertenecer a un Usuario de Unidad (hereda sus unidades)
+    let parentUnit='';
+    if(roleNeedsParentUnit(role)){
+      parentUnit=(patch.parentUnit!==undefined?(patch.parentUnit||'').trim():(cur.parentUnit||''));
+      const p=usersMapRef.current[parentUnit];
+      if(!parentUnit || !p || p.role!=='unit') return {error:'Selecciona el usuario de unidad al que pertenece'};
+    }
     await writeUserDb(username,{
       ...cur,
       name:patch.name!==undefined?patch.name:cur.name,
-      role, unit:units[0]||'', units,
+      role, unit:units[0]||'', units, parentUnit,
       active:patch.active!==undefined?patch.active:(cur.active!==false),
       ...extra
     });
@@ -1203,7 +1224,7 @@ function App(){
     h(MobileTabs,{view,setView,changedNow,user}),
     editing && h(Editor,{ap:editing,user,onClose:()=>setEditing(null),onSave:commitChange}),
     editingUser && h(UserEditor,{
-      rec:editingUser.__new?null:editingUser, currentUser:user, airports,
+      rec:editingUser.__new?null:editingUser, currentUser:user, airports, users,
       onClose:()=>setEditingUser(null),
       onCreate:async d=>{const r=await createUser(d); if(r&&r.ok)setEditingUser(null); return r;},
       onSave:async (un,p)=>{const r=await saveUser(un,p); if(r&&r.ok)setEditingUser(null); return r;},
@@ -1858,12 +1879,12 @@ function UsersAdmin({users,currentUser,onNew,onEdit,onDelete}){
   const [unitF,setUnitF]=useState('');     // filtro por unidad a la que pertenece
   const all=Object.values(users||{});
   // unidades presentes entre los usuarios (alimenta el selector de filtro por unidad)
-  const unitSet=Array.from(new Set(all.flatMap(u=>userUnits(u)))).sort();
+  const unitSet=Array.from(new Set(all.flatMap(u=>userUnits(u,users)))).sort();
   const qq=q.trim().toLowerCase();
   const list=all
     .filter(u=> !qq || (u.username||'').toLowerCase().includes(qq) || (u.name||'').toLowerCase().includes(qq))
     .filter(u=> !roleF || u.role===roleF)
-    .filter(u=> !unitF || userUnits(u).includes(unitF))
+    .filter(u=> !unitF || userUnits(u,users).includes(unitF))
     .sort((a,b)=>(ROLES.indexOf(a.role)+'_'+a.username).localeCompare(ROLES.indexOf(b.role)+'_'+b.username));
   const total=all.length;
   return h('div',null,
@@ -1889,9 +1910,11 @@ function UsersAdmin({users,currentUser,onNew,onEdit,onDelete}){
                 h('div',null,
                   h('div',{className:'icao',style:{fontSize:16}}, u.username),
                   h('div',{className:'nm'}, u.name),
-                  h('div',{className:'city'}, ROLE_LABEL[u.role]||u.role)),
+                  h('div',{className:'city'}, ROLE_LABEL[u.role]||u.role),
+                  roleNeedsParentUnit(u.role) && h('div',{className:'city',style:{color:'var(--ink-faint)'}},
+                    'Pertenece a: '+(u.parentUnit||'—'))),
                 h('div',{className:'owntag'},
-                  h('b',null, roleNeedsUnit(u.role)?(userUnits(u).join(' · ')||'—'):'—'),
+                  h('b',null, (roleNeedsUnit(u.role)||roleNeedsParentUnit(u.role))?(userUnits(u,users).join(' · ')||'—'):'—'),
                   u.active===false
                     ? h('span',{style:{color:'var(--red)'}},'INACTIVO')
                     : h('span',{style:{color:'var(--phos)'}},'ACTIVO'))),
@@ -1905,17 +1928,23 @@ function UsersAdmin({users,currentUser,onNew,onEdit,onDelete}){
 }
 
 /* ---------------- Editor de usuario (crear / editar) ---------------- */
-function UserEditor({rec,currentUser,airports,onClose,onCreate,onSave}){
+function UserEditor({rec,currentUser,airports,users,onClose,onCreate,onSave}){
   const isNew=!rec;
   const [username,setUsername]=useState(rec?rec.username:'');
   const [name,setName]=useState(rec?rec.name:'');
   const [role,setRole]=useState(rec?rec.role:'unit');
-  const [units,setUnits]=useState(rec?userUnits(rec):[]);
+  const [units,setUnits]=useState(rec&&roleNeedsUnit(rec.role)?(rec.units||[]).filter(Boolean):[]);
+  const [parentUnit,setParentUnit]=useState(rec?rec.parentUnit||'':'');
   const [active,setActive]=useState(rec?rec.active!==false:true);
   const [password,setPassword]=useState('');
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
-  const needUnit=roleNeedsUnit(role);   // unidad (varias) y general (una) se asignan a unidad(es)
-  const multi=role==='unit';            // el usuario de unidad puede gestionar varias
+  const needUnit=roleNeedsUnit(role);          // se asigna directamente a unidad(es)
+  const needParent=roleNeedsParentUnit(role);  // pertenece a un Usuario de Unidad
+  const multi=role==='unit';                   // el usuario de unidad puede gestionar varias
+  // usuarios de unidad disponibles como "padre" de un usuario general
+  const parentOpts=Object.values(users||{})
+    .filter(u=>u.role==='unit')
+    .sort((a,b)=>(a.username||'').localeCompare(b.username||''));
   // unidades disponibles = aeródromos del catálogo (dedup por propietario)
   const unitOpts=Array.from(new Map(
     (airports||[]).map(a=>[a.owner,{code:a.owner,label:a.icao+' · '+a.name}])).values());
@@ -1925,12 +1954,12 @@ function UserEditor({rec,currentUser,airports,onClose,onCreate,onSave}){
     role==='admin'  ? 'Acceso total: gestiona usuarios y edita cualquier unidad del país.' :
     role==='unit'   ? 'Edita pistas/STAR/aprox de TODAS sus unidades asignadas (una o varias).' :
     role==='sector' ? 'Solo visualización operativa (sin edición de datos).' :
-                      'Solo accede al Briefing de turno de su unidad asignada.';
+                      'Pertenece a un Usuario de Unidad y hereda su(s) unidad(es). Solo accede al Briefing de turno.';
   const submit=async()=>{
     setBusy(true); setErr('');
     const r=isNew
-      ? await onCreate({username:username.trim(),name:name.trim(),role,units,password})
-      : await onSave(rec.username,{name:name.trim(),role,units,active,password:password||undefined});
+      ? await onCreate({username:username.trim(),name:name.trim(),role,units,parentUnit,password})
+      : await onSave(rec.username,{name:name.trim(),role,units,parentUnit,active,password:password||undefined});
     setBusy(false);
     if(r&&r.error) setErr(r.error);
   };
@@ -1973,6 +2002,17 @@ function UserEditor({rec,currentUser,airports,onClose,onCreate,onSave}){
               : h('select',{value:units[0]||'',onChange:e=>setUnits(e.target.value?[e.target.value]:[])},
                   h('option',{value:''},'— Selecciona unidad —'),
                   unitOpts.map(o=>h('option',{key:o.code,value:o.code},o.label)))),
+        needParent && h('div',{className:'field'},
+          h('label',null,'Usuario de unidad al que pertenece ',
+            h('span',{className:'hint'},'hereda su(s) unidad(es)')),
+          parentOpts.length===0
+            ? h('div',{style:{fontFamily:'var(--mono)',fontSize:11,color:'var(--amber)',
+                border:'1px solid var(--amber-deep)',padding:'10px 12px',lineHeight:1.5}},
+                'No hay usuarios de unidad. Crea primero un Usuario de Unidad.')
+            : h('select',{value:parentUnit,onChange:e=>setParentUnit(e.target.value)},
+                h('option',{value:''},'— Selecciona usuario de unidad —'),
+                parentOpts.map(o=>h('option',{key:o.username,value:o.username},
+                  o.username+' · '+(o.name||'')+' ('+(userUnits(o).join(' · ')||'sin unidad')+')')))),
         !isNew && h('div',{className:'field'},
           h('label',null,'Estado de la cuenta'),
           h('div',{className:'seg'},
