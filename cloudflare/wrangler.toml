@@ -1,0 +1,18 @@
+name = "rwycast-metar"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Refresco cada 1 minuto (UTC). Cloudflare lo ejecuta puntualmente, a diferencia
+# de GitHub Actions. Esto reemplaza al cron */5 de .github/workflows/metar.yml.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# URL base de la Realtime Database, SIN barra final.
+RTDB_URL = "https://atcbrief-default-rtdb.firebaseio.com"
+# Semilla base por si el estado aún no existe en RTDB.
+DEFAULTS = "SCEL,SCDA,SCFA,SCIE,SCTE,SCCI"
+
+# RTDB_SECRET NO va aquí. Se guarda como secret (cifrado) con:
+#   wrangler secret put RTDB_SECRET
+# Es opcional: solo si endureces las reglas de Firebase para exigir auth.
