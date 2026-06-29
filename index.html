@@ -693,15 +693,15 @@ const RAIL_META={
 // Roles que se asignan directamente a una o varias unidades aeroportuarias.
 function roleNeedsUnit(role){ return role==='unit'; }
 // Roles que NO se asignan a una unidad, sino que pertenecen (y heredan la unidad)
-// de un Usuario de Unidad superior. El usuario general cuelga de un usuario de unidad.
-function roleNeedsParentUnit(role){ return role==='general'; }
+// de un Usuario de Unidad superior. General y Sector de Control cuelgan de uno.
+function roleNeedsParentUnit(role){ return role==='general'||role==='sector'; }
 // Unidades aeroportuarias asociadas al usuario. El usuario de unidad las tiene
 // asignadas (units[]); el general las HEREDA de su usuario de unidad (parentUnit).
 // Pasa `usersMap` para resolver la herencia a partir de un registro de la base.
 // Acepta tanto un perfil de sesión (units ya resuelto) como un registro DB.
 function userUnits(u, usersMap){
   if(!u) return [];
-  if(u.role==='general' && u.parentUnit && usersMap && usersMap[u.parentUnit])
+  if(roleNeedsParentUnit(u.role) && u.parentUnit && usersMap && usersMap[u.parentUnit])
     return userUnits(usersMap[u.parentUnit]);
   if(Array.isArray(u.units) && u.units.length) return u.units;
   return u.unit ? [u.unit] : [];
@@ -1953,7 +1953,7 @@ function UserEditor({rec,currentUser,airports,users,onClose,onCreate,onSave}){
   const roleHelp =
     role==='admin'  ? 'Acceso total: gestiona usuarios y edita cualquier unidad del país.' :
     role==='unit'   ? 'Edita pistas/STAR/aprox de TODAS sus unidades asignadas (una o varias).' :
-    role==='sector' ? 'Solo visualización operativa (sin edición de datos).' :
+    role==='sector' ? 'Pertenece a un Usuario de Unidad y hereda su(s) unidad(es). Solo visualización operativa (sin edición de datos).' :
                       'Pertenece a un Usuario de Unidad y hereda su(s) unidad(es). Solo accede al Briefing de turno.';
   const submit=async()=>{
     setBusy(true); setErr('');
