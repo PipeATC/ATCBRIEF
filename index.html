@@ -94,10 +94,9 @@
   .nav button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-left:7px;vertical-align:middle;box-shadow:0 0 8px var(--amber);animation:pulse 1.1s infinite}
 
   .clock{margin-left:auto;display:flex;align-items:center;gap:16px;padding:0 16px;border-left:1px solid var(--line)}
-  .clock .cgrp{display:flex;flex-direction:column;align-items:flex-end}
+  .clock .cgrp{display:flex;flex-direction:column;align-items:center}
   .clock .z{font-family:var(--mono);font-size:18px;font-weight:700;color:#fff;letter-spacing:.06em;line-height:1.15}
-  .clock .z .zu{color:#fff}
-  .clock .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--ink-faint);text-align:right}
+  .clock .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--ink-faint);text-align:center}
   .who{display:flex;align-items:center;gap:10px;padding:0 16px;border-left:1px solid var(--line);cursor:pointer}
   .who .av{width:30px;height:30px;border:1px solid var(--phos);display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:12px;color:var(--phos)}
   .who .meta{font-family:var(--mono);font-size:10px;line-height:1.5}
@@ -1368,11 +1367,11 @@ function TopBar({user,clock,view,setView,unread,onLogout}){
         l, (k==='log'&&unread>0)&&h('span',{className:'dot'})))),
     h('div',{className:'clock'},
       h('div',{className:'cgrp'},
-        h('div',{className:'z'},clock.local),
-        h('div',{className:'lbl'},'LOCAL')),
+        h('div',{className:'lbl'},'LOCAL'),
+        h('div',{className:'z'},clock.local)),
       h('div',{className:'cgrp'},
-        h('div',{className:'z'},clock.utc,' ',h('span',{className:'zu'},'Z')),
-        h('div',{className:'lbl'},'UTC')),
+        h('div',{className:'lbl'},'UTC'),
+        h('div',{className:'z'},clock.utc)),
     ),
     h('div',{className:'who',onClick:onLogout,title:'Cerrar sesión'},
       h('div',{className:'av'},user.name.replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()),
